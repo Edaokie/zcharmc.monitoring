@@ -16,8 +16,8 @@ on:
       - ".github/workflows/firmware-ci.yml"
 
 jobs:
-  build-and-analyze:
-    name: Build and Static Analysis
+  build-test-analyze:
+    name: Build, Test, and Analyze
     runs-on: ubuntu-latest
 
     steps:
@@ -44,6 +44,9 @@ jobs:
 
       - name: Build firmware
         run: pio run -d firmware -e dev
+
+      - name: Run native unit tests
+        run: pio test -d firmware -e native
 
       - name: Run static code analysis
         run: pio check -d firmware
