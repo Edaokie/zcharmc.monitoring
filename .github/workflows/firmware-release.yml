@@ -1,0 +1,47 @@
+name: Firmware Release Artifact
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-release-artifact:
+    name: Build Firmware Binary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+          key: ${{ runner.os }}-platformio-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build production firmware
+        run: pio run -d firmware -e prod
+
+      - name: Generate checksum
+        run: |
+          cd firmware
+          shasum -a 256 .pio/build/lilygo-t-display-s3/firmware.bin > firmware.sha256
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zcharmc-firmware
+          path: |
+            firmware/.pio/build/lilygo-t-display-s3/firmware.bin
+            firmware/firmware.sha256
