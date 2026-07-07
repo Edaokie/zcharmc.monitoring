@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Settings2 } from "lucide-react";
+import { Settings2, Wifi, WifiOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { StatCard } from "@/components/monitor/StatCard";
 import { TimeSeriesChart } from "@/components/monitor/TimeSeriesChart";
@@ -21,37 +21,136 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { co2Status, generateSnapshot, THRESHOLDS } from "@/lib/mock-data";
+import { co2Status, generateSnapshot, THRESHOLDS, type SensorPoint } from "@/lib/mock-data";
+import { fetchHistory, type Reading } from "@/lib/api";
+import { useSocket } from "@/hooks/useSocket";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/dashboard")({
   component: DashboardPage,
 });
 
+// ─────────────────────────────────────────
+// Convert backend readings to chart-friendly SensorPoint[]
+// ─────────────────────────────────────────
+function toSensorPoints(readings: Reading[], field: 'co2' | 'temperature' | 'humidity'): SensorPoint[] {
+  return readings
+    .map(r => ({ t: new Date(r.timestamp).getTime(), v: r[field] ?? 0 }))
+    .sort((a, b) => a.t - b.t);
+}
+
+function socketToSensorPoints(
+  arr: { co2: number; temperature: number; humidity: number; timestamp: string }[],
+  field: 'co2' | 'temperature' | 'humidity',
+): SensorPoint[] {
+  return arr.map(r => ({ t: new Date(r.timestamp).getTime(), v: r[field] ?? 0 }));
+}
+
+// ─────────────────────────────────────────
+// Node IDs from hardware
+// ─────────────────────────────────────────
+const NODES = ['inlet', 'outlet', 'solenoid_valves'] as const;
+
 function DashboardPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [range, setRange] = useState<TimeRange>("realtime");
-  const [snap, setSnap] = useState(() => generateSnapshot(60, 5000));
 
-  // Simulated live stream. Replace with: socket.on('sensor_data', ...)
+  // Real-time data from WebSocket
+  const { connected, latestByNode, recentByNode } = useSocket();
+
+  // Historical data for non-realtime views
+  const [historyData, setHistoryData] = useState<Record<string, Reading[]>>({});
+  const [loading, setLoading] = useState(false);
+
+  // Mock data fallback (for sensors not yet connected: NO2, SO2, pH, PM2.5, flow, level, valves)
+  const [mockSnap] = useState(() => generateSnapshot(60, 5000));
+
+  // Fetch historical data when range changes away from realtime
   useEffect(() => {
-    if (range !== "realtime") {
-      const params = rangeParams(range);
-      setSnap(generateSnapshot(params.count, params.interval));
-      return;
-    }
-    const id = setInterval(() => setSnap(generateSnapshot(60, 5000)), 3000);
-    return () => clearInterval(id);
+    if (range === "realtime") return;
+
+    setLoading(true);
+    Promise.all(
+      NODES.map(nodeId =>
+        fetchHistory(nodeId).then(data => ({ nodeId, data }))
+      )
+    )
+      .then(results => {
+        const map: Record<string, Reading[]> = {};
+        results.forEach(r => { map[r.nodeId] = r.data; });
+        setHistoryData(map);
+      })
+      .catch(err => {
+        console.error('[Dashboard] Failed to fetch history:', err);
+        toast.error('Failed to load historical data');
+      })
+      .finally(() => setLoading(false));
   }, [range]);
 
-  const co2InLast = last(snap.co2.node1);
-  const co2OutLast = last(snap.co2.node2);
-  const efficiency = ((co2InLast - co2OutLast) / co2InLast) * 100;
+  // ─────────────────────────────────────────
+  // Build chart series from real data
+  // ─────────────────────────────────────────
+  const co2Series = useMemo(() => {
+    if (range === "realtime") {
+      return {
+        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'co2'),
+        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'co2'),
+      };
+    }
+    return {
+      inlet: toSensorPoints(historyData['inlet'] || [], 'co2'),
+      outlet: toSensorPoints(historyData['outlet'] || [], 'co2'),
+    };
+  }, [range, recentByNode, historyData]);
+
+  const tempSeries = useMemo(() => {
+    if (range === "realtime") {
+      return {
+        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'temperature'),
+        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'temperature'),
+      };
+    }
+    return {
+      inlet: toSensorPoints(historyData['inlet'] || [], 'temperature'),
+      outlet: toSensorPoints(historyData['outlet'] || [], 'temperature'),
+    };
+  }, [range, recentByNode, historyData]);
+
+  const humiditySeries = useMemo(() => {
+    if (range === "realtime") {
+      return {
+        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'humidity'),
+        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'humidity'),
+      };
+    }
+    return {
+      inlet: toSensorPoints(historyData['inlet'] || [], 'humidity'),
+      outlet: toSensorPoints(historyData['outlet'] || [], 'humidity'),
+    };
+  }, [range, recentByNode, historyData]);
+
+  // Latest values for stat cards
+  const inletLatest = latestByNode['inlet'];
+  const outletLatest = latestByNode['outlet'];
+  const co2In = inletLatest?.co2 ?? 0;
+  const co2Out = outletLatest?.co2 ?? 0;
+  const efficiency = co2In > 0 ? ((co2In - co2Out) / co2In) * 100 : 0;
+
+  // Health: track last-seen time per node
+  const healthTimes = useMemo(() => ({
+    inlet: inletLatest ? new Date(inletLatest.timestamp).getTime() : 0,
+    outlet: outletLatest ? new Date(outletLatest.timestamp).getTime() : 0,
+    solenoid_valves: latestByNode['solenoid_valves']
+      ? new Date(latestByNode['solenoid_valves'].timestamp).getTime()
+      : 0,
+  }), [latestByNode, inletLatest, outletLatest]);
 
   const nodesOnline = useMemo(() => {
-    return Object.values(snap.health).every((t) => Date.now() - t < THRESHOLDS.offlineMs);
-  }, [snap]);
+    return Object.values(healthTimes).every((t) => t > 0 && Date.now() - t < THRESHOLDS.offlineMs);
+  }, [healthTimes]);
+
+  const hasRealData = co2Series.inlet.length > 0 || co2Series.outlet.length > 0;
 
   return (
     <div className="p-8 space-y-6">
@@ -63,6 +162,15 @@ function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Connection status indicator */}
+          <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-sm border ${
+            connected
+              ? 'border-green-500/30 text-green-600 bg-green-500/10'
+              : 'border-red-500/30 text-red-500 bg-red-500/10'
+          }`}>
+            {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+            {connected ? 'Live' : 'Disconnected'}
+          </div>
           <TimeRangeControl value={range} onChange={setRange} />
           {isAdmin && (
             <Sheet>
@@ -80,129 +188,122 @@ function DashboardPage() {
         </div>
       </header>
 
-      {/* Stat row */}
+      {/* Loading indicator */}
+      {loading && (
+        <div className="text-center text-sm text-muted-foreground py-4">
+          Loading historical data...
+        </div>
+      )}
+
+      {/* Stat row — REAL DATA */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Adsorption efficiency"
-          value={efficiency.toFixed(1)}
-          unit="%"
+          value={hasRealData ? efficiency.toFixed(1) : "—"}
+          unit={hasRealData ? "%" : ""}
         />
         <StatCard
-          label="CO2 inlet (N1)"
-          value={co2InLast.toFixed(0)}
-          unit="ppm"
-          status={co2Status(co2InLast)}
+          label="CO2 inlet"
+          value={co2In > 0 ? co2In.toFixed(0) : "—"}
+          unit={co2In > 0 ? "ppm" : ""}
+          status={co2In > 0 ? co2Status(co2In) : undefined}
         />
         <StatCard
-          label="CO2 outlet (N2)"
-          value={co2OutLast.toFixed(0)}
-          unit="ppm"
-          status={co2Status(co2OutLast)}
+          label="CO2 outlet"
+          value={co2Out > 0 ? co2Out.toFixed(0) : "—"}
+          unit={co2Out > 0 ? "ppm" : ""}
+          status={co2Out > 0 ? co2Status(co2Out) : undefined}
         />
         <StatCard
           label="System status"
-          value={nodesOnline ? "Online" : "Degraded"}
-          hint={nodesOnline ? "All nodes reporting" : "One or more nodes offline"}
+          value={!connected ? "Offline" : nodesOnline ? "Online" : "Degraded"}
+          hint={!connected ? "Backend disconnected" : nodesOnline ? "All nodes reporting" : "One or more nodes offline"}
         />
       </section>
 
-      {/* Sensor health */}
+      {/* Sensor health — REAL DATA */}
       <section className="flex items-center gap-6 border border-border rounded-sm p-4">
-        <SensorHealthDot label="Node 1 · Inlet" lastSeen={snap.health.node1} />
-        <SensorHealthDot label="Node 2 · Outlet" lastSeen={snap.health.node2} />
-        <SensorHealthDot label="Node 3 · Actuation" lastSeen={snap.health.node3} />
+        <SensorHealthDot label="Inlet" lastSeen={healthTimes.inlet || Date.now()} />
+        <SensorHealthDot label="Outlet" lastSeen={healthTimes.outlet || Date.now()} />
+        <SensorHealthDot label="Solenoid valves" lastSeen={healthTimes.solenoid_valves || Date.now()} />
       </section>
 
-      {/* Hero CO2 chart */}
-      <Panel title="CO2 inlet vs outlet" subtitle="Solid = Node 1 · Dashed = Node 2">
-        <TimeSeriesChart
-          height={320}
-          yLabel="ppm"
-          series={[
-            { name: "N1 inlet", data: snap.co2.node1 },
-            { name: "N2 outlet", data: snap.co2.node2, dashed: true },
-          ]}
-          thresholds={[
-            { value: THRESHOLDS.co2Warn, label: "Warning 3000" },
-            { value: THRESHOLDS.co2Danger, label: "Danger 5000" },
-          ]}
-        />
+      {/* Hero CO2 chart — REAL DATA */}
+      <Panel title="CO2 inlet vs outlet" subtitle="Solid = Inlet · Dashed = Outlet">
+        {hasRealData ? (
+          <TimeSeriesChart
+            height={320}
+            yLabel="ppm"
+            series={[
+              { name: "Inlet", data: co2Series.inlet },
+              { name: "Outlet", data: co2Series.outlet, dashed: true },
+            ]}
+            thresholds={[
+              { value: THRESHOLDS.co2Warn, label: "Warning 3000" },
+              { value: THRESHOLDS.co2Danger, label: "Danger 5000" },
+            ]}
+          />
+        ) : (
+          <NoDataPlaceholder message="Waiting for real-time CO2 data from ESP32..." />
+        )}
       </Panel>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Panel title="NO2">
-          <TimeSeriesChart
-            yLabel="ppb"
-            series={[
-              { name: "N1", data: snap.no2.node1 },
-              { name: "N2", data: snap.no2.node2, dashed: true },
-            ]}
-          />
+        {/* NO2 — MOCK (no hardware sensor yet) */}
+        <Panel title="NO2" subtitle="No sensor connected">
+          <NoDataPlaceholder message="NO2 sensor not yet connected" />
         </Panel>
-        <Panel title="SO2">
-          <TimeSeriesChart
-            yLabel="ppb"
-            series={[
-              { name: "N1", data: snap.so2.node1 },
-              { name: "N2", data: snap.so2.node2, dashed: true },
-            ]}
-          />
+
+        {/* SO2 — MOCK (no hardware sensor yet) */}
+        <Panel title="SO2" subtitle="No sensor connected">
+          <NoDataPlaceholder message="SO2 sensor not yet connected" />
         </Panel>
-        <Panel title="pH">
-          <TimeSeriesChart
-            yLabel="pH"
-            series={[
-              { name: "N1", data: snap.ph.node1 },
-              { name: "N2", data: snap.ph.node2, dashed: true },
-            ]}
-            thresholds={[{ value: 7, label: "Neutral" }]}
-          />
+
+        {/* pH — MOCK (no hardware sensor yet) */}
+        <Panel title="pH" subtitle="No sensor connected">
+          <NoDataPlaceholder message="pH sensor not yet connected" />
         </Panel>
+
+        {/* Temperature & Humidity — REAL DATA */}
         <Panel title="Temperature & humidity" subtitle="Temp solid · Humidity dashed">
-          <TimeSeriesChart
-            series={[
-              { name: "N1 temp °C", data: snap.temp.node1 },
-              { name: "N1 humidity %", data: snap.humidity.node1, dashed: true },
-            ]}
-          />
+          {hasRealData ? (
+            <TimeSeriesChart
+              series={[
+                { name: "Inlet temp °C", data: tempSeries.inlet },
+                { name: "Inlet humidity %", data: humiditySeries.inlet, dashed: true },
+              ]}
+            />
+          ) : (
+            <NoDataPlaceholder message="Waiting for temperature & humidity data..." />
+          )}
         </Panel>
-        <Panel title="PM2.5">
-          <TimeSeriesChart
-            type="area"
-            yLabel="µg/m³"
-            series={[
-              { name: "N1", data: snap.pm25.node1 },
-              { name: "N2", data: snap.pm25.node2, dashed: true },
-            ]}
-          />
+
+        {/* PM2.5 — MOCK (no hardware sensor yet) */}
+        <Panel title="PM2.5" subtitle="No sensor connected">
+          <NoDataPlaceholder message="PM2.5 sensor not yet connected" />
         </Panel>
-        <Panel title="Flow rate" subtitle={`Cumulative N1 ${cumulate(snap.flow.node1).toFixed(1)} L · N2 ${cumulate(snap.flow.node2).toFixed(1)} L`}>
-          <TimeSeriesChart
-            type="area"
-            yLabel="L/min"
-            series={[
-              { name: "N1", data: snap.flow.node1 },
-              { name: "N2", data: snap.flow.node2, dashed: true },
-            ]}
-          />
+
+        {/* Flow rate — MOCK (no hardware sensor yet) */}
+        <Panel title="Flow rate" subtitle="No sensor connected">
+          <NoDataPlaceholder message="Flow rate sensor not yet connected" />
         </Panel>
       </div>
 
-      {/* Liquid + valves */}
+      {/* Liquid + valves — keep UI, show placeholder for liquid, keep valve controls */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Panel title="Liquid level">
+        <Panel title="Liquid level" subtitle="No sensor connected">
           <div className="flex gap-6 justify-around">
-            <LevelGauge label="Node 1" value={snap.level.node1} />
-            <LevelGauge label="Node 2" value={snap.level.node2} />
+            <LevelGauge label="Inlet" value={0} />
+            <LevelGauge label="Outlet" value={0} />
           </div>
         </Panel>
         <div className="lg:col-span-2">
           <Panel
-            title="Valve status · Node 3"
+            title="Valve status · Solenoid valves"
             subtitle={isAdmin ? "Click a valve to actuate (confirm required)" : "Read-only"}
           >
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {snap.valves.map((v) => (
+              {mockSnap.valves.map((v) => (
                 <ValveStatusCard
                   key={v.id}
                   valve={v}
@@ -217,6 +318,18 @@ function DashboardPage() {
           </Panel>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// Shared components
+// ─────────────────────────────────────────
+
+function NoDataPlaceholder({ message }: { message: string }) {
+  return (
+    <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground border border-dashed border-border rounded-sm">
+      {message}
     </div>
   );
 }
@@ -260,9 +373,10 @@ function ThresholdSettingsPanel() {
         <AccordionItem value="nodes">
           <AccordionTrigger>Node configuration</AccordionTrigger>
           <AccordionContent>
-            <p className="text-sm text-muted-foreground">
-              Node addressing, MQTT topics, and calibration offsets go here.
-            </p>
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p>Nodes: <span className="font-mono">inlet</span>, <span className="font-mono">outlet</span>, <span className="font-mono">solenoid_valves</span></p>
+              <p>MQTT topic: <span className="font-mono">co2monitor/#</span></p>
+            </div>
           </AccordionContent>
         </AccordionItem>
         <AccordionItem value="users">
@@ -289,25 +403,4 @@ function Row({ label, value }: { label: string; value: number }) {
       />
     </div>
   );
-}
-
-function last(arr: { v: number }[]) {
-  return arr[arr.length - 1]?.v ?? 0;
-}
-function cumulate(arr: { v: number }[]) {
-  return arr.reduce((s, p) => s + p.v, 0) / 60;
-}
-function rangeParams(r: TimeRange) {
-  switch (r) {
-    case "1m":
-      return { count: 60, interval: 1000 };
-    case "1h":
-      return { count: 120, interval: 30_000 };
-    case "6h":
-      return { count: 180, interval: 2 * 60_000 };
-    case "24h":
-      return { count: 288, interval: 5 * 60_000 };
-    default:
-      return { count: 60, interval: 5000 };
-  }
 }
