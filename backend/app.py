@@ -166,6 +166,21 @@ def parse_date_range():
 # ─────────────────────────────────────────
 # REST API Endpoints
 # ─────────────────────────────────────────
+@app.route('/')
+def index():
+    return jsonify({
+        'status': 'ok',
+        'message': 'ZCharMC Monitoring Backend API is running.',
+        'endpoints': {
+            'health': '/api/health',
+            'latest': '/api/latest',
+            'history': '/api/history',
+            'readings': '/api/readings',
+            'stats': '/api/stats',
+            'alerts': '/api/alerts'
+        }
+    })
+
 @app.route('/api/health')
 def health():
     return jsonify({
