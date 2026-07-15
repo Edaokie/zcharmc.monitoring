@@ -198,9 +198,10 @@ void setup() {
 
   Serial.println("\n================================");
   Serial.printf("  CO2 Monitor — %s\n", NODE_ID);
-  Serial.printf("  Firmware v%s\n", FIRMWARE_VERSION);
+  Serial.printf("  Firmware v%s\n", FW_VERSION);  // ← shows version
+  Serial.printf("  Environment: %s\n", FW_ENV);    // ← shows dev/prod
   Serial.println("================================\n");
-
+  
   connectWiFi();
 
   mqtt.setServer(MQTT_BROKER, MQTT_PORT);
