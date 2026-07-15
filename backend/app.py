@@ -42,15 +42,36 @@ def get_db():
     db.row_factory = sqlite3.Row
     return db
 
+# def init_db():
+#     db = get_db()
+#     db.execute('''
+#         CREATE TABLE IF NOT EXISTS readings (
+#             id          INTEGER PRIMARY KEY AUTOINCREMENT,
+#             node_id     TEXT    NOT NULL,
+#             co2         REAL    NOT NULL,
+#             temperature REAL,
+#             humidity    REAL,
+#             timestamp   TEXT    NOT NULL
+#         )
+#     ''')
+#     db.commit()
+#     db.close()
+#     print('[DB] Database initialized')
 def init_db():
     db = get_db()
     db.execute('''
         CREATE TABLE IF NOT EXISTS readings (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             node_id     TEXT    NOT NULL,
-            co2         REAL    NOT NULL,
-            temperature REAL,
-            humidity    REAL,
+            co2         REAL    DEFAULT 0,
+            temperature REAL    DEFAULT 0,
+            humidity    REAL    DEFAULT 0,
+            no2         REAL    DEFAULT 0,
+            so2         REAL    DEFAULT 0,
+            ph          REAL    DEFAULT 0,
+            pm25        REAL    DEFAULT 0,
+            flow_rate   REAL    DEFAULT 0,
+            level       REAL    DEFAULT 0,
             timestamp   TEXT    NOT NULL
         )
     ''')
@@ -58,14 +79,27 @@ def init_db():
     db.close()
     print('[DB] Database initialized')
 
-def save_reading(node_id, co2, temperature, humidity):
+def save_reading(node_id, co2, temperature, humidity,
+                 no2=0, so2=0, ph=0, pm25=0, flow_rate=0, level=0):
     db = get_db()
-    db.execute(
-        'INSERT INTO readings (node_id, co2, temperature, humidity, timestamp) VALUES (?, ?, ?, ?, ?)',
-        (node_id, co2, temperature, humidity, datetime.now().isoformat())
-    )
+    db.execute('''
+        INSERT INTO readings
+        (node_id, co2, temperature, humidity, no2, so2, ph, pm25, flow_rate, level, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (node_id, co2, temperature, humidity,
+          no2, so2, ph, pm25, flow_rate, level,
+          datetime.now().isoformat()))
     db.commit()
     db.close()
+
+# def save_reading(node_id, co2, temperature, humidity):
+#     db = get_db()
+#     db.execute(
+#         'INSERT INTO readings (node_id, co2, temperature, humidity, timestamp) VALUES (?, ?, ?, ?, ?)',
+#         (node_id, co2, temperature, humidity, datetime.now().isoformat())
+#     )
+#     db.commit()
+#     db.close()
 
 # ─────────────────────────────────────────
 # MQTT Callbacks (VERSION2 signature)
@@ -84,24 +118,51 @@ def on_message(client, userdata, msg):
         if not raw or not raw.startswith('{'):
             print(f'[MQTT] Skipping non-JSON on {msg.topic}: {raw}')
             return
-        payload = json.loads(raw)
 
+        payload = json.loads(raw)
         print(f'[MQTT] Received on {msg.topic}: {payload}')
 
-        node_id     = payload.get('node_id', 'unknown')
+        node_id = payload.get('node_id', 'unknown')
+
+        # ── Valve node — emit valve states ──
+        if node_id == 'solenoid_valves':
+            socketio.emit('valve_update', {
+                'node_id':   node_id,
+                'valves':    payload.get('valves', []),
+                'timestamp': datetime.now().isoformat()
+            })
+            print(f'[WS] Emitted valve_update')
+            return
+
+        # ── Sensor nodes (inlet / outlet) ──
         co2         = payload.get('co2', 0)
         temperature = payload.get('temperature', 0)
         humidity    = payload.get('humidity', 0)
+        no2         = payload.get('no2', 0)
+        so2         = payload.get('so2', 0)
+        ph          = payload.get('ph', 0)
+        pm25        = payload.get('pm25', 0)
+        flow_rate   = payload.get('flow_rate', 0)
+        level       = payload.get('level', 0)
 
         # save to database
-        save_reading(node_id, co2, temperature, humidity)
+        save_reading(
+            node_id, co2, temperature, humidity,
+            no2, so2, ph, pm25, flow_rate, level
+        )
 
-        # push live update to dashboard via WebSocket
+        # push full payload to frontend via WebSocket
         socketio.emit('co2_update', {
             'node_id':     node_id,
             'co2':         co2,
             'temperature': temperature,
             'humidity':    humidity,
+            'no2':         no2,
+            'so2':         so2,
+            'ph':          ph,
+            'pm25':        pm25,
+            'flow_rate':   flow_rate,
+            'level':       level,
             'timestamp':   datetime.now().isoformat()
         })
 
@@ -109,6 +170,39 @@ def on_message(client, userdata, msg):
 
     except Exception as e:
         print(f'[MQTT] Error processing message: {e}')
+
+# def on_message(client, userdata, msg):
+#     try:
+#         raw = msg.payload.decode('utf-8').strip()
+#         if not raw or not raw.startswith('{'):
+#             print(f'[MQTT] Skipping non-JSON on {msg.topic}: {raw}')
+#             return
+#         payload = json.loads(raw)
+
+#         print(f'[MQTT] Received on {msg.topic}: {payload}')
+
+#         node_id     = payload.get('node_id', 'unknown')
+#         co2         = payload.get('co2', 0)
+#         temperature = payload.get('temperature', 0)
+#         humidity    = payload.get('humidity', 0)
+
+#         # save to database
+#         save_reading(node_id, co2, temperature, humidity)
+
+#         # push live update to dashboard via WebSocket
+#         socketio.emit('co2_update', {
+#             'node_id':     node_id,
+#             'co2':         co2,
+#             'temperature': temperature,
+#             'humidity':    humidity,
+#             'timestamp':   datetime.now().isoformat()
+#         })
+
+#         print(f'[WS] Emitted co2_update for {node_id}')
+
+#     except Exception as e:
+#         print(f'[MQTT] Error processing message: {e}')
+
 
 # ─────────────────────────────────────────
 # MQTT Client
