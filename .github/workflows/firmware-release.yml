@@ -42,6 +42,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zcharmc-firmware
-          path: |
-            firmware/.pio/build/lilygo-t-display-s3/firmware.bin
+          path: | # firmware/.pio/build/lilygo-t-display-s3/firmware.bin
+            firmware/.pio/build/dev/firmware.bin
             firmware/firmware.sha256

@@ -391,7 +391,7 @@ def stats():
 
     conditions = []
     params = []
-
+        
     if node_id:
         conditions.append('node_id = ?')
         params.append(node_id)
