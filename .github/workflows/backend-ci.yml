@@ -156,14 +156,9 @@ jobs:
       - name: 🧹 Lint — flake8
         run: |
           flake8 backend/app.py \
-            --max-line-length 120 \
-            --extend-ignore \
-              E501,W503,\
-              E402,\
-              E221,\
-              W292,W293,\
-              F541,E302,E305 \
-            --exclude backend/venv \
+            --max-line-length=120 \
+            --extend-ignore=E501,W503,E402,E221,W292,W293,F541,E302,E305 \
+            --exclude=backend/venv \
             --statistics
           # NOTE on ignored rules:
           # E402 — module-level import not at top: intentional because
