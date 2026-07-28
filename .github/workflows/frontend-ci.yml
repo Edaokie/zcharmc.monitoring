@@ -1,0 +1,238 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# FRONTEND CI — ZCharMC Monitoring
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# WHAT IS THIS FILE?
+#   This is the GitHub Actions workflow for the frontend React app.
+#   It runs on every push or pull request that touches the frontend/ folder.
+#
+# WHAT DOES IT DO?
+#   1. Install dependencies (Bun — your package manager)
+#   2. Run ESLint (catch bad code patterns, TypeScript issues)
+#   3. Run TypeScript type checker (catch type mismatches without building)
+#   4. Build the production bundle (verify the app compiles with zero errors)
+#   5. Upload the build output as a downloadable artifact on GitHub
+#
+# WHY BUN INSTEAD OF NPM?
+#   Your project uses Bun (bun.lock file exists, bunfig.toml exists).
+#   Bun is a faster alternative to npm/yarn. GitHub Actions supports it
+#   natively via the oven-sh/setup-bun action.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Name shown in the GitHub Actions UI
+name: Frontend CI
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TRIGGERS — Same pattern as backend-ci.yml but watching the frontend/ folder
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  # Run on push to develop, but ONLY when frontend files changed
+  push:
+    branches:
+      - develop
+    paths:
+      - "frontend/**"                           # any file inside frontend/
+      - ".github/workflows/frontend-ci.yml"    # or this workflow file itself
+
+  # Run on pull requests targeting develop, same path filter
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOBS
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  lint-typecheck-build:
+    # Name shown per-run in the GitHub UI
+    name: Lint, Type Check & Build
+
+    # Run on Ubuntu — free, fast, standard for web projects
+    runs-on: ubuntu-latest
+
+    # ──────────────────────────────────────────────────────────────────────
+    # ENVIRONMENT VARIABLES
+    # ──────────────────────────────────────────────────────────────────────
+    env:
+      # Tell the frontend where the backend lives.
+      # In CI, there's no real backend running, but this env var is
+      # needed so Vite doesn't throw "VITE_BACKEND_URL is undefined".
+      # The build step doesn't actually connect to the backend — it just
+      # needs the variable to exist so the bundle can compile.
+      VITE_BACKEND_URL: "http://localhost:5001"
+
+    # ──────────────────────────────────────────────────────────────────────
+    # STEPS
+    # ──────────────────────────────────────────────────────────────────────
+    steps:
+
+      # ── STEP 1: Checkout ──────────────────────────────────────────────
+      # Downloads your repo onto the GitHub VM.
+      # fetch-depth: 0 fetches full history (needed for some tools that
+      # look at git history, like changelog generators).
+      # fetch-depth: 1 (the default) only fetches the latest commit, which
+      # is faster. We use 1 here since we don't need history.
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      # ── STEP 2: Set up Bun ────────────────────────────────────────────
+      # Installs Bun on the GitHub VM.
+      # "oven-sh/setup-bun" is the official GitHub Action maintained by
+      # the Bun team (Oven is the company behind Bun).
+      #
+      # We pin to bun version "latest" which always gets the current stable
+      # release. You can pin to a specific version like "1.1.0" for
+      # reproducibility if needed.
+      - name: 🥟 Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # ── STEP 3: Cache Bun modules ─────────────────────────────────────
+      # Bun stores downloaded packages in a local cache directory.
+      # By caching it between workflow runs, we avoid re-downloading
+      # hundreds of packages (React, TanStack Router, Radix UI, etc.)
+      # every single time CI runs.
+      #
+      # CACHE KEY EXPLAINED:
+      #   "${{ runner.os }}"  → "Linux" (so mac and linux don't share caches)
+      #   "bun"               → a label to distinguish from pip or other caches
+      #   hashFiles(...)      → SHA256 hash of bun.lock file contents
+      #   If bun.lock hasn't changed → same key → cache restored instantly
+      #   If bun.lock changed (you installed a package) → new key → fresh install
+      - name: 💾 Cache Bun modules
+        uses: actions/cache@v4
+        with:
+          # Bun's global package cache directory
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('frontend/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      # ── STEP 4: Install dependencies ──────────────────────────────────
+      # "bun install" reads package.json and bun.lock and installs everything.
+      # "--frozen-lockfile" means: do NOT update bun.lock, fail if it would
+      # need updating. This is important in CI because:
+      #   - It ensures you're testing the exact same package versions as
+      #     everyone else on the team
+      #   - It prevents CI from silently upgrading packages (which could
+      #     introduce breaking changes)
+      #
+      # "working-directory: frontend" changes into the frontend/ folder
+      # before running the command, same as doing "cd frontend" first.
+      - name: 📦 Install dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      # ── STEP 5: Lint with ESLint ──────────────────────────────────────
+      # ESLint reads your code and flags problems defined in eslint.config.js.
+      # For your project this includes:
+      #   - React Hooks rules (e.g. missing useEffect dependencies)
+      #   - React Refresh rules (fast refresh compatibility)
+      #   - TypeScript-ESLint rules (type-aware linting)
+      #   - Prettier formatting rules
+      #
+      # If ESLint finds errors → this step FAILS → workflow turns red.
+      # If ESLint only finds warnings → step passes (exit code 0).
+      #
+      # The "bun run lint" command is defined in package.json:
+      #   "lint": "eslint ."
+      - name: 🧹 Lint — ESLint
+        working-directory: frontend
+        run: bun run lint
+
+      # ── STEP 6: TypeScript type check ─────────────────────────────────
+      # "tsc --noEmit" runs the TypeScript compiler but does NOT produce
+      # any output files (no .js files written to disk).
+      # Its only purpose is to check for TYPE ERRORS in your .ts/.tsx files.
+      #
+      # EXAMPLES OF WHAT THIS CATCHES:
+      #   - Passing a string where a number is expected
+      #   - Accessing a property that doesn't exist on a type
+      #   - Missing required props on a React component
+      #   - Returning the wrong type from a function
+      #
+      # WHY SEPARATE FROM LINT?
+      #   ESLint is fast but doesn't do full type inference.
+      #   tsc is slower but much more thorough about types.
+      #   Both together give you complete coverage.
+      #
+      # --project tsconfig.json → use your existing TypeScript config
+      - name: 🔷 Type check — TypeScript
+        working-directory: frontend
+        run: bun run tsc --noEmit --project tsconfig.json
+
+      # ── STEP 7: Production build ──────────────────────────────────────
+      # "bun run build" runs Vite's production build (from package.json:
+      #   "build": "vite build"
+      # )
+      #
+      # This compiles ALL your TypeScript/React code into optimized static
+      # files: HTML, CSS, and JavaScript bundles in the .output/ or dist/ folder.
+      #
+      # WHY BUILD IN CI?
+      #   Lint and type-check catch most errors, but some issues only appear
+      #   at build time (e.g. missing environment variables, plugin conflicts,
+      #   circular imports that tsc allows but Vite can't bundle).
+      #   If the build step passes, you know the code is deployable.
+      #
+      # This is the MOST IMPORTANT step — a green build means the app is ready.
+      - name: 🏗️ Build — production bundle
+        working-directory: frontend
+        run: bun run build
+
+      # ── STEP 8: Upload build artifact ─────────────────────────────────
+      # After a successful build, we upload the output folder to GitHub.
+      # This creates a downloadable zip file attached to the workflow run
+      # that you can access from the GitHub Actions UI.
+      #
+      # HOW TO DOWNLOAD IT:
+      #   1. Go to your repo on GitHub
+      #   2. Click the "Actions" tab
+      #   3. Click a completed workflow run
+      #   4. Scroll to the bottom — you'll see "Artifacts"
+      #   5. Click "frontend-build" to download the zip
+      #
+      # WHY IS THIS USEFUL?
+      #   - You can inspect the exact files that were built
+      #   - In the future, a CD (deploy) step can download this artifact
+      #     and push it to a web server or CDN automatically
+      #   - Useful for sharing a build with teammates for testing
+      #
+      # retention-days: 14 → GitHub auto-deletes this artifact after 14 days
+      #   (GitHub has limited free storage for artifacts)
+      - name: 📤 Upload build artifact
+        # "if: success()" means this only runs if ALL previous steps passed.
+        # We don't want to upload a broken build.
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          # The name that appears on GitHub under "Artifacts"
+          name: frontend-build-${{ github.sha }}
+          # The folder to upload. TanStack Start / Vite outputs here.
+          # Adjust this path if your vite config outputs elsewhere.
+          path: frontend/.output
+          # Keep artifact for 14 days then auto-delete
+          retention-days: 14
+          # Don't fail the step if the output folder is somehow empty
+          if-no-files-found: warn
+
+      # ── STEP 9 (optional): Print build size summary ──────────────────
+      # After a successful build, print the sizes of the built files.
+      # This is a handy way to monitor if your bundle is growing too large.
+      # It does NOT fail the workflow — it's purely informational.
+      - name: 📊 Build size summary
+        if: success()
+        working-directory: frontend
+        run: |
+          echo "=== Build output size ==="
+          # du -sh: show total size of the .output folder
+          # || true: don't fail if the folder doesn't exist
+          du -sh .output 2>/dev/null || echo "(.output folder not found — check vite config)"
+          echo ""
+          echo "=== Top-level files ==="
+          ls -lh .output/ 2>/dev/null || true
