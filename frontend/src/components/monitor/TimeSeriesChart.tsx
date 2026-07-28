@@ -58,11 +58,10 @@ export function TimeSeriesChart({
   // Curated to be easily distinguishable and accessible
   const PALETTE = [
     "#0d9488", // teal-600  — primary (inlet)
-    "#f97316", // orange-500 — secondary (outlet)
-    "#6366f1", // indigo-500 — tertiary
+    "#8b5cf6", // violet-500 — secondary (outlet)
+    "#f97316", // orange-500
+    "#6366f1", // indigo-500
     "#ec4899", // pink-500
-    "#8b5cf6", // violet-500
-    "#14b8a6", // teal-400
     "#f59e0b", // amber-500
     "#3b82f6", // blue-500
   ];
@@ -70,10 +69,23 @@ export function TimeSeriesChart({
   // Threshold annotation colors
   const THRESHOLD_COLORS = ["#f59e0b", "#ef4444", "#a855f7", "#6366f1"]; // amber, red, purple, indigo
 
-  const seriesColors = series.map((_, i) => PALETTE[i % PALETTE.length]);
+  // Consistently assign colors based on series name (Inlet vs Outlet)
+  const seriesColors = series.map((s, i) => {
+    const name = s.name.toLowerCase();
+    if (name.includes("inlet") || name.includes("n1")) {
+      return "#0d9488"; // Teal for Inlet
+    }
+    if (name.includes("outlet") || name.includes("n2")) {
+      return "#8b5cf6"; // Violet for Outlet
+    }
+    return PALETTE[i % PALETTE.length];
+  });
+
+  const safeId = `chart-${chartId.replace(/:/g, "")}`;
 
   const options: any = {
     chart: {
+      id: safeId,
       type,
       toolbar: { show: false },
       zoom: { enabled: false },
@@ -83,7 +95,7 @@ export function TimeSeriesChart({
     },
     stroke: {
       curve: "smooth",
-      width: series.map((s) => (s.dashed ? 2.5 : 2.5)),
+      width: series.map((s) => 2.5),
       dashArray: series.map((s) => (s.dashed ? 6 : 0)),
     },
     colors: seriesColors,

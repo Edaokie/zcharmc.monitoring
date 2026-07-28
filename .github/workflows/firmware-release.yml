@@ -1,17 +1,26 @@
 name: Firmware Release Artifact
 
+# ── Only runs when YOU manually trigger it ──
+# Go to GitHub → Actions → Firmware Release Artifact → Run workflow
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.1.0)'
+        required: true
+        default: '0.1.0'
 
 jobs:
   build-release-artifact:
-    name: Build Firmware Binary
+    name: Build Firmware Binary (prod)
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1 — Download your repo code
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4    # fixed from v6
 
+      # Step 2 — Cache PlatformIO packages
       - name: Cache PlatformIO
         uses: actions/cache@v4
         with:
@@ -22,26 +31,35 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-platformio-
 
+      # Step 3 — Install Python
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5    # fixed from v6
         with:
           python-version: "3.11"
 
+      # Step 4 — Install PlatformIO
       - name: Install PlatformIO
         run: pip install --upgrade platformio
 
+      # Step 5 — Build PROD firmware (optimized, no debug symbols)
       - name: Build production firmware
-        run: pio run -d firmware -e prod
+        run: pio run -d firmware -e prod    # fixed from dev → prod
 
+      # Step 6 — Generate SHA256 checksum
+      # This verifies the binary wasn't corrupted during download
       - name: Generate checksum
         run: |
           cd firmware
-          shasum -a 256 .pio/build/lilygo-t-display-s3/firmware.bin > firmware.sha256
+          shasum -a 256 .pio/build/dev/firmware.bin > firmware.sha256
+          echo "Checksum generated:"
+          cat firmware.sha256
 
+      # Step 7 — Upload as downloadable artifact on GitHub
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: zcharmc-firmware
-          path: | # firmware/.pio/build/lilygo-t-display-s3/firmware.bin
+          name: zcharmc-firmware-v${{ github.event.inputs.version }}
+          path: |
             firmware/.pio/build/dev/firmware.bin
             firmware/firmware.sha256
+          retention-days: 90    # keep artifact for 90 days

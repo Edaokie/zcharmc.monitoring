@@ -21,7 +21,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { co2Status, generateSnapshot, THRESHOLDS, type SensorPoint } from "@/lib/mock-data";
+import { co2Status, THRESHOLDS, type SensorPoint } from "@/lib/mock-data";
 import { fetchHistory, type Reading } from "@/lib/api";
 import { useSocket } from "@/hooks/useSocket";
 import { toast } from "sonner";
@@ -33,16 +33,13 @@ export const Route = createFileRoute("/_app/dashboard")({
 // ─────────────────────────────────────────
 // Convert backend readings to chart-friendly SensorPoint[]
 // ─────────────────────────────────────────
-function toSensorPoints(readings: Reading[], field: 'co2' | 'temperature' | 'humidity'): SensorPoint[] {
+function toSensorPoints(readings: Reading[], field: string): SensorPoint[] {
   return readings
-    .map(r => ({ t: new Date(r.timestamp).getTime(), v: r[field] ?? 0 }))
+    .map(r => ({ t: new Date(r.timestamp).getTime(), v: (r as any)[field] ?? 0 }))
     .sort((a, b) => a.t - b.t);
 }
 
-function socketToSensorPoints(
-  arr: { co2: number; temperature: number; humidity: number; timestamp: string }[],
-  field: 'co2' | 'temperature' | 'humidity',
-): SensorPoint[] {
+function socketToSensorPoints(arr: any[], field: string): SensorPoint[] {
   return arr.map(r => ({ t: new Date(r.timestamp).getTime(), v: r[field] ?? 0 }));
 }
 
@@ -57,14 +54,11 @@ function DashboardPage() {
   const [range, setRange] = useState<TimeRange>("realtime");
 
   // Real-time data from WebSocket
-  const { connected, latestByNode, recentByNode } = useSocket();
+  const { connected, latestByNode, recentByNode, valves, actuateValve } = useSocket();
 
   // Historical data for non-realtime views
   const [historyData, setHistoryData] = useState<Record<string, Reading[]>>({});
   const [loading, setLoading] = useState(false);
-
-  // Mock data fallback (for sensors not yet connected: NO2, SO2, pH, PM2.5, flow, level, valves)
-  const [mockSnap] = useState(() => generateSnapshot(60, 5000));
 
   // Fetch historical data when range changes away from realtime
   useEffect(() => {
@@ -89,8 +83,9 @@ function DashboardPage() {
   }, [range]);
 
   // ─────────────────────────────────────────
-  // Build chart series from real data
+  // Unified Data Resolvers (Real-time vs History)
   // ─────────────────────────────────────────
+  
   const co2Series = useMemo(() => {
     if (range === "realtime") {
       return {
@@ -101,6 +96,45 @@ function DashboardPage() {
     return {
       inlet: toSensorPoints(historyData['inlet'] || [], 'co2'),
       outlet: toSensorPoints(historyData['outlet'] || [], 'co2'),
+    };
+  }, [range, recentByNode, historyData]);
+
+  const no2Series = useMemo(() => {
+    if (range === "realtime") {
+      return {
+        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'no2'),
+        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'no2'),
+      };
+    }
+    return {
+      inlet: toSensorPoints(historyData['inlet'] || [], 'no2'),
+      outlet: toSensorPoints(historyData['outlet'] || [], 'no2'),
+    };
+  }, [range, recentByNode, historyData]);
+
+  const so2Series = useMemo(() => {
+    if (range === "realtime") {
+      return {
+        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'so2'),
+        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'so2'),
+      };
+    }
+    return {
+      inlet: toSensorPoints(historyData['inlet'] || [], 'so2'),
+      outlet: toSensorPoints(historyData['outlet'] || [], 'so2'),
+    };
+  }, [range, recentByNode, historyData]);
+
+  const phSeries = useMemo(() => {
+    if (range === "realtime") {
+      return {
+        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'ph'),
+        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'ph'),
+      };
+    }
+    return {
+      inlet: toSensorPoints(historyData['inlet'] || [], 'ph'),
+      outlet: toSensorPoints(historyData['outlet'] || [], 'ph'),
     };
   }, [range, recentByNode, historyData]);
 
@@ -130,27 +164,66 @@ function DashboardPage() {
     };
   }, [range, recentByNode, historyData]);
 
+  const pm25Series = useMemo(() => {
+    if (range === "realtime") {
+      return {
+        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'pm25'),
+        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'pm25'),
+      };
+    }
+    return {
+      inlet: toSensorPoints(historyData['inlet'] || [], 'pm25'),
+      outlet: toSensorPoints(historyData['outlet'] || [], 'pm25'),
+    };
+  }, [range, recentByNode, historyData]);
+
+  const flowSeries = useMemo(() => {
+    if (range === "realtime") {
+      return {
+        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'flow_rate'),
+        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'flow_rate'),
+      };
+    }
+    return {
+      inlet: toSensorPoints(historyData['inlet'] || [], 'flow_rate'),
+      outlet: toSensorPoints(historyData['outlet'] || [], 'flow_rate'),
+    };
+  }, [range, recentByNode, historyData]);
+
   // Latest values for stat cards
-  const inletLatest = latestByNode['inlet'];
-  const outletLatest = latestByNode['outlet'];
-  const co2In = inletLatest?.co2 ?? 0;
-  const co2Out = outletLatest?.co2 ?? 0;
+  const co2In = useMemo(() => {
+    return latestByNode['inlet']?.co2 ?? 0;
+  }, [latestByNode]);
+
+  const co2Out = useMemo(() => {
+    return latestByNode['outlet']?.co2 ?? 0;
+  }, [latestByNode]);
+
   const efficiency = co2In > 0 ? ((co2In - co2Out) / co2In) * 100 : 0;
 
-  // Health: track last-seen time per node
-  const healthTimes = useMemo(() => ({
-    inlet: inletLatest ? new Date(inletLatest.timestamp).getTime() : 0,
-    outlet: outletLatest ? new Date(outletLatest.timestamp).getTime() : 0,
-    solenoid_valves: latestByNode['solenoid_valves']
-      ? new Date(latestByNode['solenoid_valves'].timestamp).getTime()
-      : 0,
-  }), [latestByNode, inletLatest, outletLatest]);
+  // Health times
+  const healthTimes = useMemo(() => {
+    return {
+      inlet: latestByNode['inlet'] ? new Date(latestByNode['inlet'].timestamp).getTime() : 0,
+      outlet: latestByNode['outlet'] ? new Date(latestByNode['outlet'].timestamp).getTime() : 0,
+      solenoid_valves: latestByNode['solenoid_valves']
+        ? new Date(latestByNode['solenoid_valves'].timestamp).getTime()
+        : 0,
+    };
+  }, [latestByNode]);
 
   const nodesOnline = useMemo(() => {
     return Object.values(healthTimes).every((t) => t > 0 && Date.now() - t < THRESHOLDS.offlineMs);
   }, [healthTimes]);
 
-  const hasRealData = co2Series.inlet.length > 0 || co2Series.outlet.length > 0;
+  const liquidLevels = useMemo(() => {
+    return {
+      inlet: latestByNode['inlet']?.level ?? 0,
+      outlet: latestByNode['outlet']?.level ?? 0,
+    };
+  }, [latestByNode]);
+
+  const hasData = co2Series.inlet.length > 0 || co2Series.outlet.length > 0;
 
   return (
     <div className="p-8 space-y-6">
@@ -168,8 +241,17 @@ function DashboardPage() {
               ? 'border-green-500/30 text-green-600 bg-green-500/10'
               : 'border-red-500/30 text-red-500 bg-red-500/10'
           }`}>
-            {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-            {connected ? 'Live' : 'Disconnected'}
+            {connected ? (
+              <>
+                <Wifi className="h-3 w-3 animate-pulse" />
+                <span>Live</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="h-3 w-3" />
+                <span>Offline</span>
+              </>
+            )}
           </div>
           <TimeRangeControl value={range} onChange={setRange} />
           {isAdmin && (
@@ -190,17 +272,17 @@ function DashboardPage() {
 
       {/* Loading indicator */}
       {loading && (
-        <div className="text-center text-sm text-muted-foreground py-4">
+        <div className="text-center text-sm text-muted-foreground py-4 animate-pulse">
           Loading historical data...
         </div>
       )}
 
-      {/* Stat row — REAL DATA */}
+      {/* Stat row */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Adsorption efficiency"
-          value={hasRealData ? efficiency.toFixed(1) : "—"}
-          unit={hasRealData ? "%" : ""}
+          value={hasData ? efficiency.toFixed(1) : "—"}
+          unit={hasData ? "%" : ""}
         />
         <StatCard
           label="CO2 inlet"
@@ -221,22 +303,22 @@ function DashboardPage() {
         />
       </section>
 
-      {/* Sensor health — REAL DATA */}
-      <section className="flex items-center gap-6 border border-border rounded-sm p-4">
-        <SensorHealthDot label="Inlet" lastSeen={healthTimes.inlet || Date.now()} />
-        <SensorHealthDot label="Outlet" lastSeen={healthTimes.outlet || Date.now()} />
-        <SensorHealthDot label="Solenoid valves" lastSeen={healthTimes.solenoid_valves || Date.now()} />
+      {/* Sensor health */}
+      <section className="flex items-center gap-6 border border-border rounded-sm p-4 bg-card/30">
+        <SensorHealthDot label="Inlet Node" lastSeen={healthTimes.inlet || Date.now()} />
+        <SensorHealthDot label="Outlet Node" lastSeen={healthTimes.outlet || Date.now()} />
+        <SensorHealthDot label="Solenoid Valves" lastSeen={healthTimes.solenoid_valves || Date.now()} />
       </section>
 
-      {/* Hero CO2 chart — REAL DATA */}
+      {/* Hero CO2 chart */}
       <Panel title="CO2 inlet vs outlet" subtitle="Solid = Inlet · Dashed = Outlet">
-        {hasRealData ? (
+        {hasData ? (
           <TimeSeriesChart
             height={320}
             yLabel="ppm"
             series={[
-              { name: "Inlet", data: co2Series.inlet },
-              { name: "Outlet", data: co2Series.outlet, dashed: true },
+              { name: "Inlet CO2", data: co2Series.inlet },
+              { name: "Outlet CO2", data: co2Series.outlet, dashed: true },
             ]}
             thresholds={[
               { value: THRESHOLDS.co2Warn, label: "Warning 3000" },
@@ -244,33 +326,64 @@ function DashboardPage() {
             ]}
           />
         ) : (
-          <NoDataPlaceholder message="Waiting for real-time CO2 data from ESP32..." />
+          <NoDataPlaceholder message="Waiting for real-time CO2 data from sensors..." />
         )}
       </Panel>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* NO2 — MOCK (no hardware sensor yet) */}
-        <Panel title="NO2" subtitle="No sensor connected">
-          <NoDataPlaceholder message="NO2 sensor not yet connected" />
+        {/* NO2 */}
+        <Panel title="NO2 Concentration" subtitle="Inlet vs Outlet">
+          {hasData ? (
+            <TimeSeriesChart
+              yLabel="ppb"
+              series={[
+                { name: "Inlet NO2", data: no2Series.inlet },
+                { name: "Outlet NO2", data: no2Series.outlet, dashed: true },
+              ]}
+            />
+          ) : (
+            <NoDataPlaceholder message="Waiting for NO2 data..." />
+          )}
         </Panel>
 
-        {/* SO2 — MOCK (no hardware sensor yet) */}
-        <Panel title="SO2" subtitle="No sensor connected">
-          <NoDataPlaceholder message="SO2 sensor not yet connected" />
+        {/* SO2 */}
+        <Panel title="SO2 Concentration" subtitle="Inlet vs Outlet">
+          {hasData ? (
+            <TimeSeriesChart
+              yLabel="ppb"
+              series={[
+                { name: "Inlet SO2", data: so2Series.inlet },
+                { name: "Outlet SO2", data: so2Series.outlet, dashed: true },
+              ]}
+            />
+          ) : (
+            <NoDataPlaceholder message="Waiting for SO2 data..." />
+          )}
         </Panel>
 
-        {/* pH — MOCK (no hardware sensor yet) */}
-        <Panel title="pH" subtitle="No sensor connected">
-          <NoDataPlaceholder message="pH sensor not yet connected" />
+        {/* pH */}
+        <Panel title="pH Level" subtitle="Neutral threshold = 7.0">
+          {hasData ? (
+            <TimeSeriesChart
+              yLabel="pH"
+              series={[
+                { name: "Inlet pH", data: phSeries.inlet },
+                { name: "Outlet pH", data: phSeries.outlet, dashed: true },
+              ]}
+              thresholds={[{ value: 7, label: "Neutral" }]}
+            />
+          ) : (
+            <NoDataPlaceholder message="Waiting for pH data..." />
+          )}
         </Panel>
 
-        {/* Temperature & Humidity — REAL DATA */}
+        {/* Temperature & Humidity */}
         <Panel title="Temperature & humidity" subtitle="Temp solid · Humidity dashed">
-          {hasRealData ? (
+          {hasData ? (
             <TimeSeriesChart
               series={[
-                { name: "Inlet temp °C", data: tempSeries.inlet },
-                { name: "Inlet humidity %", data: humiditySeries.inlet, dashed: true },
+                { name: "Inlet Temp (°C)", data: tempSeries.inlet },
+                { name: "Inlet Humidity (%)", data: humiditySeries.inlet, dashed: true },
               ]}
             />
           ) : (
@@ -278,23 +391,45 @@ function DashboardPage() {
           )}
         </Panel>
 
-        {/* PM2.5 — MOCK (no hardware sensor yet) */}
-        <Panel title="PM2.5" subtitle="No sensor connected">
-          <NoDataPlaceholder message="PM2.5 sensor not yet connected" />
+        {/* PM2.5 */}
+        <Panel title="PM2.5 Level" subtitle="Inlet vs Outlet">
+          {hasData ? (
+            <TimeSeriesChart
+              type="area"
+              yLabel="µg/m³"
+              series={[
+                { name: "Inlet PM2.5", data: pm25Series.inlet },
+                { name: "Outlet PM2.5", data: pm25Series.outlet, dashed: true },
+              ]}
+            />
+          ) : (
+            <NoDataPlaceholder message="Waiting for PM2.5 data..." />
+          )}
         </Panel>
 
-        {/* Flow rate — MOCK (no hardware sensor yet) */}
-        <Panel title="Flow rate" subtitle="No sensor connected">
-          <NoDataPlaceholder message="Flow rate sensor not yet connected" />
+        {/* Flow rate */}
+        <Panel title="Flow rate" subtitle="Inlet vs Outlet">
+          {hasData ? (
+            <TimeSeriesChart
+              type="area"
+              yLabel="L/min"
+              series={[
+                { name: "Inlet Flow", data: flowSeries.inlet },
+                { name: "Outlet Flow", data: flowSeries.outlet, dashed: true },
+              ]}
+            />
+          ) : (
+            <NoDataPlaceholder message="Waiting for flow rate data..." />
+          )}
         </Panel>
       </div>
 
-      {/* Liquid + valves — keep UI, show placeholder for liquid, keep valve controls */}
+      {/* Liquid + valves */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Panel title="Liquid level" subtitle="No sensor connected">
-          <div className="flex gap-6 justify-around">
-            <LevelGauge label="Inlet" value={0} />
-            <LevelGauge label="Outlet" value={0} />
+        <Panel title="Liquid level" subtitle="Storage tank percentage">
+          <div className="flex gap-6 justify-around py-4">
+            <LevelGauge label="Inlet Level" value={Math.round(liquidLevels.inlet)} />
+            <LevelGauge label="Outlet Level" value={Math.round(liquidLevels.outlet)} />
           </div>
         </Panel>
         <div className="lg:col-span-2">
@@ -303,14 +438,15 @@ function DashboardPage() {
             subtitle={isAdmin ? "Click a valve to actuate (confirm required)" : "Read-only"}
           >
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {mockSnap.valves.map((v) => (
+              {valves.map((v) => (
                 <ValveStatusCard
                   key={v.id}
                   valve={v}
                   isAdmin={isAdmin}
                   onToggle={(id) => {
                     if (!isAdmin) return;
-                    toast.success(`Valve ${id} toggle requested`);
+                    actuateValve(id, !v.open);
+                    toast.success(`Sent toggle request for Valve ${id}`);
                   }}
                 />
               ))}
@@ -328,7 +464,7 @@ function DashboardPage() {
 
 function NoDataPlaceholder({ message }: { message: string }) {
   return (
-    <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground border border-dashed border-border rounded-sm">
+    <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground border border-dashed border-border rounded-sm bg-muted/10">
       {message}
     </div>
   );
