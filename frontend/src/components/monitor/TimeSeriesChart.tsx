@@ -73,10 +73,10 @@ export function TimeSeriesChart({
   const seriesColors = series.map((s, i) => {
     const name = s.name.toLowerCase();
     if (name.includes("inlet") || name.includes("n1")) {
-      return "#0d9488"; // Teal for Inlet
+      return "#ef4444"; // Red for Inlet
     }
     if (name.includes("outlet") || name.includes("n2")) {
-      return "#8b5cf6"; // Violet for Outlet
+      return "#eab308"; // Yellow for Outlet
     }
     return PALETTE[i % PALETTE.length];
   });

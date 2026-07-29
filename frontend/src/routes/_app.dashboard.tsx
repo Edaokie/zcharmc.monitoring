@@ -7,6 +7,7 @@ import { TimeSeriesChart } from "@/components/monitor/TimeSeriesChart";
 import { LevelGauge } from "@/components/monitor/LevelGauge";
 import { ValveStatusCard } from "@/components/monitor/ValveStatusCard";
 import { SensorHealthDot } from "@/components/monitor/SensorHealthDot";
+import { NodeLegendPanel } from "@/components/monitor/NodeLegendPanel";
 import { TimeRangeControl, type TimeRange } from "@/components/monitor/TimeRangeControl";
 import {
   Accordion,
@@ -226,7 +227,8 @@ function DashboardPage() {
   const hasData = co2Series.inlet.length > 0 || co2Series.outlet.length > 0;
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="flex gap-6 p-8">
+      <div className="flex-1 min-w-0 space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Live dashboard</h1>
@@ -454,6 +456,14 @@ function DashboardPage() {
           </Panel>
         </div>
       </div>
+      </div>
+
+      {/* Right-side sticky legend panel */}
+      <NodeLegendPanel
+        healthTimes={healthTimes}
+        valves={valves}
+        connected={connected}
+      />
     </div>
   );
 }
