@@ -1,41 +1,16 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# BACKEND CI — ZCharMC Monitoring
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# WHAT IS THIS FILE?
-#   This is a GitHub Actions workflow. Every time you push code that touches
-#   the backend folder, GitHub automatically spins up a fresh Ubuntu virtual
-#   machine and runs all the steps below — in order — to verify your code is
-#   healthy before it goes into your branch.
-#
-# HOW TO READ THIS FILE:
-#   YAML uses indentation (spaces, never tabs) to show hierarchy.
-#   Keys are followed by colons (:).
-#   Lists start with a dash (-).
-#
-# ─────────────────────────────────────────────────────────────────────────────
+# GitHub Actions CI workflow for the Flask backend.
+# Runs on every push/PR to develop that touches the backend/ folder.
+# Steps: checkout → Python setup → pip cache → install deps → lint → test → smoke test
 
-# "name" is what shows up in the GitHub Actions tab on your repo page.
 name: Backend CI
 
-# ─────────────────────────────────────────────────────────────────────────────
-# TRIGGERS — When does this workflow run?
-# ─────────────────────────────────────────────────────────────────────────────
 on:
-  # Trigger 1: When you PUSH commits to the "develop" branch...
   push:
     branches:
-      - develop          # Only watch the develop branch, not main or others
+      - develop
     paths:
-      # ...BUT only if the push includes changes inside these paths.
-      # This is called "path filtering". If you push a change only to
-      # the frontend folder, this backend workflow will NOT run.
-      # This saves GitHub Actions minutes and keeps things focused.
-      - "backend/**"                           # any file inside backend/
-      - ".github/workflows/backend-ci.yml"    # or the workflow file itself
-
-  # Trigger 2: When someone opens (or updates) a Pull Request targeting develop.
-  # This lets you catch broken code BEFORE it gets merged.
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
   pull_request:
     branches:
       - develop
@@ -43,116 +18,43 @@ on:
       - "backend/**"
       - ".github/workflows/backend-ci.yml"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# JOBS — The actual work
-# ─────────────────────────────────────────────────────────────────────────────
-# A "job" is a collection of steps that runs on one virtual machine.
-# You can have multiple jobs that run in parallel or depend on each other.
-# We only need one job here: lint, test, then smoke-test the Flask server.
 jobs:
   lint-test-smoke:
-    # A human-readable name shown in the GitHub UI.
     name: Lint, Test & Smoke Test
-
-    # Which operating system to run on.
-    # "ubuntu-latest" is the most common choice — it's free and fast.
     runs-on: ubuntu-latest
 
-    # ──────────────────────────────────────────────────────────────────────
-    # ENVIRONMENT VARIABLES
-    # ──────────────────────────────────────────────────────────────────────
-    # These are available to all steps below, like process.env in Node
-    # or os.environ in Python.
     env:
-      # Tell Flask where the app is
       FLASK_APP: app.py
-      # Disable Flask's debug mode in CI (we want production-like behavior)
       FLASK_ENV: production
-      # Port the Flask server runs on
       FLASK_RUN_PORT: 5001
-      # A dummy MQTT broker address — CI has no real broker, but the app
-      # handles a failed MQTT connection gracefully (it just logs a warning).
       MQTT_BROKER: "127.0.0.1"
       MQTT_PORT: "1883"
       MQTT_TOPIC: "co2monitor/#"
-      # A dummy secret key — only matters for session signing, fine for CI
       SECRET_KEY: "ci-dummy-secret-key"
 
-    # ──────────────────────────────────────────────────────────────────────
-    # STEPS — Run one by one, in order, on the same machine
-    # ──────────────────────────────────────────────────────────────────────
     steps:
-
-      # ── STEP 1: Checkout ──────────────────────────────────────────────
-      # "uses" means we're using a pre-built Action from the GitHub
-      # marketplace (like a library/plugin for workflows).
-      # actions/checkout@v4 downloads your repository code onto the VM.
-      # Without this, the VM has NO files from your repo — it's a blank machine.
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      # ── STEP 2: Set up Python ─────────────────────────────────────────
-      # Your Flask backend is Python. This Action installs the exact
-      # version of Python you specify. We use 3.11 to match a typical
-      # production server version.
       - name: 🐍 Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # ── STEP 3: Cache pip packages ────────────────────────────────────
-      # Every time this workflow runs from scratch, pip would download all
-      # your packages from the internet (Flask, paho-mqtt, etc.).
-      # "Cache" saves those downloaded files between workflow runs, so the
-      # next run reuses them instead of re-downloading. This can cut
-      # 30–60 seconds off your workflow time.
-      #
-      # HOW CACHE KEYS WORK:
-      #   The "key" is a fingerprint. If requirements.txt hasn't changed,
-      #   the key stays the same → cache hit → instant restore.
-      #   If requirements.txt changes (you added a new package),
-      #   the key changes → cache miss → pip downloads fresh.
       - name: 💾 Cache pip packages
         uses: actions/cache@v4
         with:
-          # Where pip stores downloaded packages on the VM
           path: ~/.cache/pip
-          # The cache key — hashed from the contents of requirements.txt
-          # ${{ }} is GitHub Actions "expression syntax" (like template literals)
-          # hashFiles() computes a SHA256 of the file contents
           key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
-          # Fallback keys: if the exact key misses, try these (partial restore)
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      # ── STEP 4: Install Python dependencies ───────────────────────────
-      # "run" executes a shell command directly on the VM.
-      # We install from requirements.txt just like you do locally.
-      # --no-deps is NOT used here because we want full dependency resolution.
-      # -q means "quiet" (less noisy output in the logs).
       - name: 📦 Install dependencies
         run: pip install -q -r backend/requirements.txt
 
-      # ── STEP 5: Install flake8 (the linter) ───────────────────────────
-      # flake8 is a Python linting tool — it reads your code and flags:
-      #   - Syntax errors (code that would crash when run)
-      #   - Style violations (lines too long, unused imports, etc.)
-      #   - Common bugs (undefined variables, etc.)
-      # We install it separately because it's a dev tool, not in requirements.txt
       - name: 🔍 Install linting tools
         run: pip install -q flake8
 
-      # ── STEP 6: Lint with flake8 ──────────────────────────────────────
-      # Run flake8 on the backend/app.py file.
-      # Flags explained:
-      #   --max-line-length 120  → Allow lines up to 120 chars (PEP8 default is 79,
-      #                            but that's too strict for modern code)
-      #   --extend-ignore E501   → Don't error on long lines (already covered above)
-      #   --exclude venv         → Skip the virtual environment folder entirely
-      #                            (it has thousands of files we don't own)
-      #   --statistics           → Print a summary count of each error type
-      #
-      # If flake8 finds errors → this step FAILS → the whole workflow turns red.
       - name: 🧹 Lint — flake8
         run: |
           flake8 backend/app.py \
@@ -160,51 +62,17 @@ jobs:
             --extend-ignore=E501,W503,E402,E221,W292,W293,F541,E302,E305 \
             --exclude=backend/venv \
             --statistics
-          # NOTE on ignored rules:
-          # E402 — module-level import not at top: intentional because
-          #         eventlet.monkey_patch() MUST run before all other imports.
-          # E221 — multiple spaces before operator: intentional aligned
-          #         assignment style used throughout app.py for readability.
-          # W292/W293 — whitespace issues: minor, non-breaking.
-          # F541 — f-string without placeholders: pre-existing in app.py.
-          # E302/E305 — blank lines: commented-out code affects blank line count.
 
-      # ── STEP 7: Install pytest ─────────────────────────────────────────
-      # pytest is the standard Python testing framework.
-      # It discovers files named test_*.py and runs functions named test_*().
       - name: 🧪 Install test tools
         run: pip install -q pytest
 
-      # ── STEP 8: Run pytest ─────────────────────────────────────────────
-      # Runs all test files inside backend/tests/.
-      # The -v flag means "verbose" — show each test name as it runs.
-      # -p no:warnings suppresses deprecation warnings from Flask/eventlet in output.
-      #
-      # We set WORKING DIRECTORY to `backend/` so that the app's relative paths
-      # (like instance/co2.db) resolve correctly — same as running locally.
       - name: ✅ Run tests — pytest
         working-directory: backend
         run: pytest tests/ -v -p no:warnings
 
-      # ── STEP 9: Smoke Test — Does Flask actually start? ───────────────
-      # A "smoke test" is the simplest possible check:
-      # "Does the app start up at all without crashing?"
-      #
-      # HOW IT WORKS:
-      #   1. We start Flask in the background (&) so CI doesn't hang
-      #   2. We wait 4 seconds for Flask to finish booting
-      #   3. We use `curl` to hit the /api/health endpoint
-      #   4. We check the HTTP status code is 200 (OK)
-      #   5. We kill the background Flask process so it doesn't linger
-      #
-      # WHY THIS MATTERS:
-      #   pytest tests the logic. The smoke test proves the actual server
-      #   can boot and respond to HTTP — a different kind of check.
       - name: 🚀 Smoke test — Flask server startup
         working-directory: backend
         run: |
-          # Initialize the SQLite database (creates instance/co2.db)
-          # We run init_db() via a one-liner Python script
           python -c "
           import sys, os
           sys.path.insert(0, '.')
@@ -214,45 +82,26 @@ jobs:
           print('[CI] Database initialized')
           "
 
-          # Start Flask in the background
-          # The & at the end means "run this process in the background"
-          # We redirect stdout/stderr to flask_ci.log so we can read it if something fails
           python -m flask run --host=0.0.0.0 --port=5001 > flask_ci.log 2>&1 &
-
-          # Save the background process ID (PID) so we can kill it later
           FLASK_PID=$!
           echo "Flask started with PID $FLASK_PID"
 
-          # Wait for Flask to finish booting
-          # 5 seconds is usually enough; Flask typically boots in < 2 seconds
           echo "Waiting for Flask to boot..."
           sleep 5
 
-          # Hit the health endpoint with curl
-          # --fail  → exit with error code if HTTP status is not 2xx
-          # --silent → suppress curl's progress meter
-          # --show-error → still show errors even with --silent
           echo "Testing /api/health..."
           curl --fail --silent --show-error http://localhost:5001/api/health
-
-          # Print the response on a new line for readability in CI logs
           echo ""
           echo "✅ /api/health responded successfully"
 
-          # Also test the root endpoint
           echo "Testing / ..."
           curl --fail --silent --show-error http://localhost:5001/
           echo ""
           echo "✅ / responded successfully"
 
-          # Kill the Flask background process cleanly
           kill $FLASK_PID || true
           echo "Flask stopped."
 
-      # ── STEP 10 (on failure): Print Flask logs ────────────────────────
-      # If any previous step failed, this step will run and print the Flask
-      # server log. This helps you debug what went wrong.
-      # "if: failure()" means this step ONLY runs when a previous step failed.
       - name: 🪵 Print Flask logs on failure
         if: failure()
         working-directory: backend
