@@ -452,7 +452,7 @@ def export_csv():
 
     db = get_db()
     rows = db.execute(
-        f'SELECT id, node_id, co2, temperature, humidity, timestamp FROM readings {where} ORDER BY id DESC',
+        f'SELECT id, node_id, co2, temperature, humidity, no2, so2, ph, pm25, flow_rate, level, timestamp FROM readings {where} ORDER BY id DESC',
         params
     ).fetchall()
     db.close()
@@ -460,9 +460,15 @@ def export_csv():
     # Build CSV in memory
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['id', 'node_id', 'co2', 'temperature', 'humidity', 'timestamp'])
+    writer.writerow([
+        'id', 'node_id', 'co2', 'temperature', 'humidity',
+        'no2', 'so2', 'ph', 'pm25', 'flow_rate', 'level', 'timestamp'
+    ])
     for row in rows:
-        writer.writerow([row['id'], row['node_id'], row['co2'], row['temperature'], row['humidity'], row['timestamp']])
+        writer.writerow([
+            row['id'], row['node_id'], row['co2'], row['temperature'], row['humidity'],
+            row['no2'], row['so2'], row['ph'], row['pm25'], row['flow_rate'], row['level'], row['timestamp']
+        ])
 
     # Generate filename with timestamp
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -485,15 +491,23 @@ def export_csv():
 @app.route('/api/alerts')
 def alerts():
     """
-    Get readings that exceeded thresholds.
-    Query params: same filters as /api/readings
+    Get readings that exceeded thresholds for CO2, pH, or tank liquid level.
+    Query params:
+      - co2_warn, co2_danger (default: 3000, 5000 ppm)
+      - ph_min, ph_max (default: 5.5, 8.5)
+      - level_min, level_max (default: 20, 90 %)
     """
-    co2_warn   = float(request.args.get('co2_warn', 3000))
-    co2_danger = float(request.args.get('co2_danger', 5000))
+    co2_warn    = float(request.args.get('co2_warn', 3000))
+    co2_danger  = float(request.args.get('co2_danger', 5000))
+    ph_min      = float(request.args.get('ph_min', 5.5))
+    ph_max      = float(request.args.get('ph_max', 8.5))
+    level_min   = float(request.args.get('level_min', 20))
+    level_max   = float(request.args.get('level_max', 90))
+
     start_dt, end_dt = parse_date_range()
 
-    conditions = [f'co2 >= ?']
-    params = [co2_warn]
+    conditions = ['(co2 >= ? OR ph < ? OR ph > ? OR level < ? OR level > ?)']
+    params = [co2_warn, ph_min, ph_max, level_min, level_max]
 
     if start_dt:
         conditions.append('timestamp >= ?')
@@ -514,8 +528,26 @@ def alerts():
     result = []
     for row in rows:
         r = dict(row)
-        r['alert_type'] = 'danger' if r['co2'] >= co2_danger else 'warning'
-        r['threshold'] = f'> {int(co2_danger)} ppm' if r['co2'] >= co2_danger else f'> {int(co2_warn)} ppm'
+        co2_val = r.get('co2') or 0
+        ph_val = r.get('ph') or 7.0
+        lvl_val = r.get('level') or 50.0
+
+        if co2_val >= co2_danger:
+            r['alert_type'] = 'danger'
+            r['threshold'] = f'CO2 > {int(co2_danger)} ppm'
+        elif co2_val >= co2_warn:
+            r['alert_type'] = 'warning'
+            r['threshold'] = f'CO2 > {int(co2_warn)} ppm'
+        elif ph_val < ph_min or ph_val > ph_max:
+            r['alert_type'] = 'warning'
+            r['threshold'] = f'pH {ph_val:.1f} out of bounds ({ph_min}-{ph_max})'
+        elif lvl_val < level_min or lvl_val > level_max:
+            r['alert_type'] = 'warning'
+            r['threshold'] = f'Level {lvl_val:.0f}% out of bounds ({level_min}-{level_max}%)'
+        else:
+            r['alert_type'] = 'warning'
+            r['threshold'] = 'Threshold breach'
+
         result.append(r)
 
     return jsonify(result)

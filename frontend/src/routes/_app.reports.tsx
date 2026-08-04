@@ -290,12 +290,18 @@ function ReportsPage() {
               <TableHead className="text-right">CO2 (ppm)</TableHead>
               <TableHead className="text-right">Temp (°C)</TableHead>
               <TableHead className="text-right">Humidity (%)</TableHead>
+              <TableHead className="text-right">NO2 (ppb)</TableHead>
+              <TableHead className="text-right">SO2 (ppb)</TableHead>
+              <TableHead className="text-right">pH</TableHead>
+              <TableHead className="text-right">PM2.5</TableHead>
+              <TableHead className="text-right">Flow (L/m)</TableHead>
+              <TableHead className="text-right">Level (%)</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {readings.length === 0 && !loading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                   No readings found for the selected filters.
                 </TableCell>
               </TableRow>
@@ -306,12 +312,24 @@ function ReportsPage() {
                     {format(new Date(r.timestamp), "yyyy-MM-dd HH:mm:ss")}
                   </TableCell>
                   <TableCell>{r.node_id}</TableCell>
-                  <TableCell className="text-right font-mono">{r.co2.toFixed(1)}</TableCell>
+                  <TableCell className="text-right font-mono">{r.co2?.toFixed(1) ?? "—"}</TableCell>
                   <TableCell className="text-right font-mono">
                     {r.temperature?.toFixed(1) ?? "—"}
                   </TableCell>
                   <TableCell className="text-right font-mono">
                     {r.humidity?.toFixed(1) ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">{r.no2?.toFixed(1) ?? "—"}</TableCell>
+                  <TableCell className="text-right font-mono">{r.so2?.toFixed(1) ?? "—"}</TableCell>
+                  <TableCell className="text-right font-mono">{r.ph?.toFixed(1) ?? "—"}</TableCell>
+                  <TableCell className="text-right font-mono">
+                    {r.pm25?.toFixed(1) ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {r.flow_rate?.toFixed(1) ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {r.level?.toFixed(0) ?? "—"}
                   </TableCell>
                 </TableRow>
               ))

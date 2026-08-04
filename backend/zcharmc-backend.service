@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# zcharmc-backend.service — systemd Unit File for Raspberry Pi Deployment
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Installation Instructions on Raspberry Pi:
+#
+# 1. Copy this file to /etc/systemd/system/:
+#    sudo cp zcharmc-backend.service /etc/systemd/system/
+#
+# 2. Reload systemd manager configuration:
+#    sudo systemctl daemon-reload
+#
+# 3. Enable the service to start automatically on boot:
+#    sudo systemctl enable zcharmc-backend
+#
+# 4. Start the service immediately:
+#    sudo systemctl start zcharmc-backend
+#
+# 5. Check service status:
+#    sudo systemctl status zcharmc-backend
+#
+# 6. View live logs:
+#    sudo journalctl -u zcharmc-backend -f
+# ─────────────────────────────────────────────────────────────────────────────
+
+[Unit]
+Description=ZCharMC Monitoring Flask Backend Service
+After=network.target mosquitto.service
+Wants=mosquitto.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/zcharmc.monitoring/backend
+ExecStart=/home/pi/zcharmc.monitoring/backend/venv/bin/python app.py
+Restart=always
+RestartSec=5
+Environment=FLASK_ENV=production
+Environment=PORT=5001
+Environment=MQTT_BROKER=127.0.0.1
+Environment=MQTT_PORT=1883
+Environment=MQTT_TOPIC=co2monitor/#
+
+[Install]
+WantedBy=multi-user.target
