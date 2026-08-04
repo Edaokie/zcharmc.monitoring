@@ -27,7 +27,7 @@ export const Route = createFileRoute("/_app/reports")({
   component: ReportsPage,
 });
 
-const DATE_RANGES: { label: string; value: DateRange | 'custom' }[] = [
+const DATE_RANGES: { label: string; value: DateRange | "custom" }[] = [
   { label: "10 min", value: "10min" },
   { label: "30 min", value: "30min" },
   { label: "1 hour", value: "1h" },
@@ -42,7 +42,7 @@ const DATE_RANGES: { label: string; value: DateRange | 'custom' }[] = [
 const NODES = ["All", "inlet", "outlet", "solenoid_valves"];
 
 function ReportsPage() {
-  const [range, setRange] = useState<DateRange | 'custom'>("24h");
+  const [range, setRange] = useState<DateRange | "custom">("24h");
   const [node, setNode] = useState("All");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -81,8 +81,8 @@ function ReportsPage() {
       setTotalRecords(readingsRes.pagination.total);
       setStats(statsRes);
     } catch (err) {
-      console.error('[Reports] Failed to load:', err);
-      toast.error('Failed to load reports data. Is the backend running?');
+      console.error("[Reports] Failed to load:", err);
+      toast.error("Failed to load reports data. Is the backend running?");
     } finally {
       setLoading(false);
     }
@@ -105,7 +105,7 @@ function ReportsPage() {
     delete filter.page;
     delete filter.per_page;
     exportCSV(filter);
-    toast.success('Downloading CSV...');
+    toast.success("Downloading CSV...");
   }
 
   function handleExportPerNode() {
@@ -117,10 +117,10 @@ function ReportsPage() {
     }
     // If "All" selected, export per-node separately
     if (node === "All") {
-      ['inlet', 'outlet', 'solenoid_valves'].forEach(n => {
+      ["inlet", "outlet", "solenoid_valves"].forEach((n) => {
         exportCSV({ ...filter, node_id: n });
       });
-      toast.success('Downloading 3 CSV files (one per node)...');
+      toast.success("Downloading 3 CSV files (one per node)...");
     } else {
       exportCSV(filter);
       toast.success(`Downloading CSV for ${node}...`);
@@ -129,13 +129,13 @@ function ReportsPage() {
 
   // Chart data from readings
   const co2ChartInlet = readings
-    .filter(r => r.node_id === 'inlet')
-    .map(r => ({ t: new Date(r.timestamp).getTime(), v: r.co2 }))
+    .filter((r) => r.node_id === "inlet")
+    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.co2 }))
     .sort((a, b) => a.t - b.t);
 
   const co2ChartOutlet = readings
-    .filter(r => r.node_id === 'outlet')
-    .map(r => ({ t: new Date(r.timestamp).getTime(), v: r.co2 }))
+    .filter((r) => r.node_id === "outlet")
+    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.co2 }))
     .sort((a, b) => a.t - b.t);
 
   return (
@@ -152,11 +152,13 @@ function ReportsPage() {
         <Field label="Date range">
           <select
             value={range}
-            onChange={(e) => setRange(e.target.value as DateRange | 'custom')}
+            onChange={(e) => setRange(e.target.value as DateRange | "custom")}
             className="border border-border rounded-sm px-2 py-1.5 text-sm bg-background"
           >
             {DATE_RANGES.map((r) => (
-              <option key={r.value} value={r.value}>{r.label}</option>
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
             ))}
           </select>
         </Field>
@@ -190,7 +192,9 @@ function ReportsPage() {
             className="border border-border rounded-sm px-2 py-1.5 text-sm bg-background"
           >
             {NODES.map((n) => (
-              <option key={n} value={n}>{n === "All" ? "All" : n}</option>
+              <option key={n} value={n}>
+                {n === "All" ? "All" : n}
+              </option>
             ))}
           </select>
         </Field>
@@ -303,8 +307,12 @@ function ReportsPage() {
                   </TableCell>
                   <TableCell>{r.node_id}</TableCell>
                   <TableCell className="text-right font-mono">{r.co2.toFixed(1)}</TableCell>
-                  <TableCell className="text-right font-mono">{r.temperature?.toFixed(1) ?? "—"}</TableCell>
-                  <TableCell className="text-right font-mono">{r.humidity?.toFixed(1) ?? "—"}</TableCell>
+                  <TableCell className="text-right font-mono">
+                    {r.temperature?.toFixed(1) ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {r.humidity?.toFixed(1) ?? "—"}
+                  </TableCell>
                 </TableRow>
               ))
             )}
@@ -315,7 +323,7 @@ function ReportsPage() {
         {totalPages > 1 && (
           <div className="flex items-center justify-center gap-2 px-5 py-3 border-t border-border">
             <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
               className="text-xs px-3 py-1.5 border border-border rounded-sm hover:bg-muted disabled:opacity-40"
             >
@@ -325,7 +333,7 @@ function ReportsPage() {
               Page {page} of {totalPages}
             </span>
             <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
               className="text-xs px-3 py-1.5 border border-border rounded-sm hover:bg-muted disabled:opacity-40"
             >
@@ -341,9 +349,7 @@ function ReportsPage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[10px] uppercase tracking-widest text-muted-foreground">
-        {label}
-      </label>
+      <label className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</label>
       {children}
     </div>
   );

@@ -7,9 +7,9 @@
 // Usage:
 //   const { latestByNode, connected, valves, actuateValve } = useSocket();
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { io, type Socket } from 'socket.io-client';
-import { BACKEND_URL } from '@/lib/api';
+import { useEffect, useRef, useState, useCallback } from "react";
+import { io, type Socket } from "socket.io-client";
+import { BACKEND_URL } from "@/lib/api";
 
 export interface SocketReading {
   node_id: string;
@@ -50,9 +50,9 @@ interface UseSocketReturn {
 const MAX_BUFFER = 120; // keep last 120 data points per node (~10 min at 5s interval)
 
 function normalizeNodeId(nodeId: string): string {
-  if (nodeId === 'node1') return 'inlet';
-  if (nodeId === 'node2') return 'outlet';
-  if (nodeId === 'node3') return 'solenoid_valves';
+  if (nodeId === "node1") return "inlet";
+  if (nodeId === "node2") return "outlet";
+  if (nodeId === "node3") return "solenoid_valves";
   return nodeId;
 }
 
@@ -80,16 +80,16 @@ export function useSocket(): UseSocketReturn {
     };
 
     // Update latest per node
-    setLatestByNode(prev => ({ ...prev, [normNodeId]: normalizedData }));
+    setLatestByNode((prev) => ({ ...prev, [normNodeId]: normalizedData }));
 
     // Append to global rolling buffer
-    setRecentReadings(prev => {
+    setRecentReadings((prev) => {
       const next = [...prev, normalizedData];
       return next.length > MAX_BUFFER * 3 ? next.slice(-MAX_BUFFER * 3) : next;
     });
 
     // Append to per-node rolling buffer
-    setRecentByNode(prev => {
+    setRecentByNode((prev) => {
       const nodeArr = prev[normNodeId] || [];
       const next = [...nodeArr, normalizedData];
       return {
@@ -99,39 +99,48 @@ export function useSocket(): UseSocketReturn {
     });
   }, []);
 
-  const handleValveUpdate = useCallback((data: { node_id: string; valves: any[] }) => {
-    if (data && Array.isArray(data.valves)) {
-      const mappedValves = data.valves.map(v => ({
-        id: v.id,
-        label: v.label,
-        open: v.open,
-        lastToggled: v.lastToggled ?? Date.now(),
-      }));
-      setValves(mappedValves);
-    }
-  }, []);
+  const handleValveUpdate = useCallback(
+    (data: {
+      node_id: string;
+      valves: { id: string; label: string; open: boolean; lastToggled?: number }[];
+    }) => {
+      if (data && Array.isArray(data.valves)) {
+        const mappedValves = data.valves.map((v) => ({
+          id: v.id,
+          label: v.label,
+          open: v.open,
+          lastToggled: v.lastToggled ?? Date.now(),
+        }));
+        setValves(mappedValves);
+      }
+    },
+    [],
+  );
 
-  const actuateValve = useCallback((valveId: string, open: boolean) => {
-    if (socketRef.current && connected) {
-      console.log(`[WS] Emitting actuate_valve for ${valveId} -> ${open}`);
-      socketRef.current.emit('actuate_valve', { valve_id: valveId, open });
-      
-      // Optimistically update locally in case backend doesn't broadcast immediately
-      setValves(prev =>
-        prev.map(v => (v.id === valveId ? { ...v, open, lastToggled: Date.now() } : v))
-      );
-    } else {
-      // Offline fallback: toggle directly in state for offline demo
-      console.log(`[WS] Offline mode: Toggle valve ${valveId} to ${open}`);
-      setValves(prev =>
-        prev.map(v => (v.id === valveId ? { ...v, open, lastToggled: Date.now() } : v))
-      );
-    }
-  }, [connected]);
+  const actuateValve = useCallback(
+    (valveId: string, open: boolean) => {
+      if (socketRef.current && connected) {
+        console.log(`[WS] Emitting actuate_valve for ${valveId} -> ${open}`);
+        socketRef.current.emit("actuate_valve", { valve_id: valveId, open });
+
+        // Optimistically update locally in case backend doesn't broadcast immediately
+        setValves((prev) =>
+          prev.map((v) => (v.id === valveId ? { ...v, open, lastToggled: Date.now() } : v)),
+        );
+      } else {
+        // Offline fallback: toggle directly in state for offline demo
+        console.log(`[WS] Offline mode: Toggle valve ${valveId} to ${open}`);
+        setValves((prev) =>
+          prev.map((v) => (v.id === valveId ? { ...v, open, lastToggled: Date.now() } : v)),
+        );
+      }
+    },
+    [connected],
+  );
 
   useEffect(() => {
     const socket = io(BACKEND_URL, {
-      transports: ['websocket', 'polling'],
+      transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
@@ -140,22 +149,22 @@ export function useSocket(): UseSocketReturn {
 
     socketRef.current = socket;
 
-    socket.on('connect', () => {
-      console.log('[WS] Connected to backend');
+    socket.on("connect", () => {
+      console.log("[WS] Connected to backend");
       setConnected(true);
     });
 
-    socket.on('disconnect', () => {
-      console.log('[WS] Disconnected from backend');
+    socket.on("disconnect", () => {
+      console.log("[WS] Disconnected from backend");
       setConnected(false);
     });
 
-    socket.on('co2_update', handleUpdate);
-    socket.on('valve_update', handleValveUpdate);
+    socket.on("co2_update", handleUpdate);
+    socket.on("valve_update", handleValveUpdate);
 
     return () => {
-      socket.off('co2_update', handleUpdate);
-      socket.off('valve_update', handleValveUpdate);
+      socket.off("co2_update", handleUpdate);
+      socket.off("valve_update", handleValveUpdate);
       socket.disconnect();
       socketRef.current = null;
     };

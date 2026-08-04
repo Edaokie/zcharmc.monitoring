@@ -16,7 +16,7 @@ export interface ValveState {
 }
 
 const seed = (n: number) => {
-  let x = Math.sin(n) * 10000;
+  const x = Math.sin(n) * 10000;
   return x - Math.floor(x);
 };
 
@@ -116,11 +116,59 @@ export interface AlertRecord {
 export function generateAlerts(): AlertRecord[] {
   const now = Date.now();
   return [
-    { id: "a1", timestamp: now - 1000 * 60 * 5, node: "node1", sensor: "CO2", type: "co2_high", triggered: 5320, threshold: "> 5000 ppm", status: "active" },
-    { id: "a2", timestamp: now - 1000 * 60 * 40, node: "node2", sensor: "pH", type: "ph_out", triggered: 5.2, threshold: "5.5–8.5", status: "active" },
-    { id: "a3", timestamp: now - 1000 * 60 * 60 * 3, node: "node1", sensor: "CO2", type: "co2_high", triggered: 4800, threshold: "> 3000 ppm", status: "resolved", duration: "12 min" },
-    { id: "a4", timestamp: now - 1000 * 60 * 60 * 6, node: "node2", sensor: "Liquid", type: "level_low", triggered: 8, threshold: "< 10%", status: "resolved", duration: "24 min" },
-    { id: "a5", timestamp: now - 1000 * 60 * 60 * 12, node: "node1", sensor: "Heartbeat", type: "sensor_offline", triggered: 0, threshold: "> 60s", status: "resolved", duration: "3 min" },
+    {
+      id: "a1",
+      timestamp: now - 1000 * 60 * 5,
+      node: "node1",
+      sensor: "CO2",
+      type: "co2_high",
+      triggered: 5320,
+      threshold: "> 5000 ppm",
+      status: "active",
+    },
+    {
+      id: "a2",
+      timestamp: now - 1000 * 60 * 40,
+      node: "node2",
+      sensor: "pH",
+      type: "ph_out",
+      triggered: 5.2,
+      threshold: "5.5–8.5",
+      status: "active",
+    },
+    {
+      id: "a3",
+      timestamp: now - 1000 * 60 * 60 * 3,
+      node: "node1",
+      sensor: "CO2",
+      type: "co2_high",
+      triggered: 4800,
+      threshold: "> 3000 ppm",
+      status: "resolved",
+      duration: "12 min",
+    },
+    {
+      id: "a4",
+      timestamp: now - 1000 * 60 * 60 * 6,
+      node: "node2",
+      sensor: "Liquid",
+      type: "level_low",
+      triggered: 8,
+      threshold: "< 10%",
+      status: "resolved",
+      duration: "24 min",
+    },
+    {
+      id: "a5",
+      timestamp: now - 1000 * 60 * 60 * 12,
+      node: "node1",
+      sensor: "Heartbeat",
+      type: "sensor_offline",
+      triggered: 0,
+      threshold: "> 60s",
+      status: "resolved",
+      duration: "3 min",
+    },
   ];
 }
 

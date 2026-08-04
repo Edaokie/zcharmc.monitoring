@@ -14,7 +14,7 @@ export default defineConfig({
   },
   vite: {
     resolve: {
-      dedupe: ["apexcharts", "react-apexcharts"]
-    }
-  }
+      dedupe: ["apexcharts", "react-apexcharts"],
+    },
+  },
 });

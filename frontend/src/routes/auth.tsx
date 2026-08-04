@@ -121,8 +121,8 @@ function LoginPage() {
         </form>
 
         <p className="mt-6 text-[10px] text-muted-foreground leading-relaxed">
-          Research / thesis monitoring system. Access restricted to myIIT accounts.
-          Not a public-facing service.
+          Research / thesis monitoring system. Access restricted to myIIT accounts. Not a
+          public-facing service.
         </p>
       </div>
     </div>

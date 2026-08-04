@@ -26,6 +26,7 @@ export function TimeSeriesChart({
   type = "line",
 }: Props) {
   const [ready, setReady] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [Chart, setChart] = useState<any>(null);
   const [isBrowser, setIsBrowser] = useState(false);
   const chartId = useId();
@@ -83,6 +84,7 @@ export function TimeSeriesChart({
 
   const safeId = `chart-${chartId.replace(/:/g, "")}`;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const options: any = {
     chart: {
       id: safeId,

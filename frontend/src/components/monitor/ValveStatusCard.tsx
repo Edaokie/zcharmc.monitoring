@@ -32,16 +32,19 @@ export function ValveStatusCard({ valve, isAdmin, onToggle }: Props) {
       )}
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-wide text-muted-foreground">
-          {valve.label}
-        </span>
+        <span className="text-xs uppercase tracking-wide text-muted-foreground">{valve.label}</span>
         {valve.open ? (
           <CircleDot className="h-4 w-4 text-foreground" />
         ) : (
           <Circle className="h-4 w-4 text-muted-foreground" />
         )}
       </div>
-      <span className={cn("text-lg font-semibold", valve.open ? "text-foreground" : "text-muted-foreground")}>
+      <span
+        className={cn(
+          "text-lg font-semibold",
+          valve.open ? "text-foreground" : "text-muted-foreground",
+        )}
+      >
         {valve.open ? "Open" : "Closed"}
       </span>
       <span className="text-xs text-muted-foreground">
@@ -55,7 +58,9 @@ export function ValveStatusCard({ valve, isAdmin, onToggle }: Props) {
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogTrigger asChild>
-        <button type="button" className="w-full">{body}</button>
+        <button type="button" className="w-full">
+          {body}
+        </button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>

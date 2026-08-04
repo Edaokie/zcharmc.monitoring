@@ -14,16 +14,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { co2Status, THRESHOLDS, type SensorPoint } from "@/lib/mock-data";
 import { fetchHistory, type Reading } from "@/lib/api";
-import { useSocket } from "@/hooks/useSocket";
+import { useSocket, type SocketReading } from "@/hooks/useSocket";
+
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/dashboard")({
@@ -33,20 +28,23 @@ export const Route = createFileRoute("/_app/dashboard")({
 // ─────────────────────────────────────────
 // Convert backend readings to chart-friendly SensorPoint[]
 // ─────────────────────────────────────────
-function toSensorPoints(readings: Reading[], field: string): SensorPoint[] {
+function toSensorPoints(readings: Reading[], field: keyof Reading): SensorPoint[] {
   return readings
-    .map(r => ({ t: new Date(r.timestamp).getTime(), v: (r as any)[field] ?? 0 }))
+    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: (r[field] as number) ?? 0 }))
     .sort((a, b) => a.t - b.t);
 }
 
-function socketToSensorPoints(arr: any[], field: string): SensorPoint[] {
-  return arr.map(r => ({ t: new Date(r.timestamp).getTime(), v: r[field] ?? 0 }));
+function socketToSensorPoints(arr: SocketReading[], field: string): SensorPoint[] {
+  return arr.map((r) => ({
+    t: new Date(r.timestamp).getTime(),
+    v: (r[field as keyof SocketReading] as number) ?? 0,
+  }));
 }
 
 // ─────────────────────────────────────────
 // Node IDs from hardware
 // ─────────────────────────────────────────
-const NODES = ['inlet', 'outlet', 'solenoid_valves'] as const;
+const NODES = ["inlet", "outlet", "solenoid_valves"] as const;
 
 function DashboardPage() {
   const { user } = useAuth();
@@ -65,19 +63,17 @@ function DashboardPage() {
     if (range === "realtime") return;
 
     setLoading(true);
-    Promise.all(
-      NODES.map(nodeId =>
-        fetchHistory(nodeId).then(data => ({ nodeId, data }))
-      )
-    )
-      .then(results => {
+    Promise.all(NODES.map((nodeId) => fetchHistory(nodeId).then((data) => ({ nodeId, data }))))
+      .then((results) => {
         const map: Record<string, Reading[]> = {};
-        results.forEach(r => { map[r.nodeId] = r.data; });
+        results.forEach((r) => {
+          map[r.nodeId] = r.data;
+        });
         setHistoryData(map);
       })
-      .catch(err => {
-        console.error('[Dashboard] Failed to fetch history:', err);
-        toast.error('Failed to load historical data');
+      .catch((err) => {
+        console.error("[Dashboard] Failed to fetch history:", err);
+        toast.error("Failed to load historical data");
       })
       .finally(() => setLoading(false));
   }, [range]);
@@ -85,118 +81,118 @@ function DashboardPage() {
   // ─────────────────────────────────────────
   // Unified Data Resolvers (Real-time vs History)
   // ─────────────────────────────────────────
-  
+
   const co2Series = useMemo(() => {
     if (range === "realtime") {
       return {
-        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'co2'),
-        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'co2'),
+        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "co2"),
+        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "co2"),
       };
     }
     return {
-      inlet: toSensorPoints(historyData['inlet'] || [], 'co2'),
-      outlet: toSensorPoints(historyData['outlet'] || [], 'co2'),
+      inlet: toSensorPoints(historyData["inlet"] || [], "co2"),
+      outlet: toSensorPoints(historyData["outlet"] || [], "co2"),
     };
   }, [range, recentByNode, historyData]);
 
   const no2Series = useMemo(() => {
     if (range === "realtime") {
       return {
-        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'no2'),
-        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'no2'),
+        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "no2"),
+        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "no2"),
       };
     }
     return {
-      inlet: toSensorPoints(historyData['inlet'] || [], 'no2'),
-      outlet: toSensorPoints(historyData['outlet'] || [], 'no2'),
+      inlet: toSensorPoints(historyData["inlet"] || [], "no2"),
+      outlet: toSensorPoints(historyData["outlet"] || [], "no2"),
     };
   }, [range, recentByNode, historyData]);
 
   const so2Series = useMemo(() => {
     if (range === "realtime") {
       return {
-        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'so2'),
-        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'so2'),
+        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "so2"),
+        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "so2"),
       };
     }
     return {
-      inlet: toSensorPoints(historyData['inlet'] || [], 'so2'),
-      outlet: toSensorPoints(historyData['outlet'] || [], 'so2'),
+      inlet: toSensorPoints(historyData["inlet"] || [], "so2"),
+      outlet: toSensorPoints(historyData["outlet"] || [], "so2"),
     };
   }, [range, recentByNode, historyData]);
 
   const phSeries = useMemo(() => {
     if (range === "realtime") {
       return {
-        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'ph'),
-        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'ph'),
+        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "ph"),
+        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "ph"),
       };
     }
     return {
-      inlet: toSensorPoints(historyData['inlet'] || [], 'ph'),
-      outlet: toSensorPoints(historyData['outlet'] || [], 'ph'),
+      inlet: toSensorPoints(historyData["inlet"] || [], "ph"),
+      outlet: toSensorPoints(historyData["outlet"] || [], "ph"),
     };
   }, [range, recentByNode, historyData]);
 
   const tempSeries = useMemo(() => {
     if (range === "realtime") {
       return {
-        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'temperature'),
-        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'temperature'),
+        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "temperature"),
+        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "temperature"),
       };
     }
     return {
-      inlet: toSensorPoints(historyData['inlet'] || [], 'temperature'),
-      outlet: toSensorPoints(historyData['outlet'] || [], 'temperature'),
+      inlet: toSensorPoints(historyData["inlet"] || [], "temperature"),
+      outlet: toSensorPoints(historyData["outlet"] || [], "temperature"),
     };
   }, [range, recentByNode, historyData]);
 
   const humiditySeries = useMemo(() => {
     if (range === "realtime") {
       return {
-        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'humidity'),
-        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'humidity'),
+        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "humidity"),
+        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "humidity"),
       };
     }
     return {
-      inlet: toSensorPoints(historyData['inlet'] || [], 'humidity'),
-      outlet: toSensorPoints(historyData['outlet'] || [], 'humidity'),
+      inlet: toSensorPoints(historyData["inlet"] || [], "humidity"),
+      outlet: toSensorPoints(historyData["outlet"] || [], "humidity"),
     };
   }, [range, recentByNode, historyData]);
 
   const pm25Series = useMemo(() => {
     if (range === "realtime") {
       return {
-        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'pm25'),
-        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'pm25'),
+        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "pm25"),
+        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "pm25"),
       };
     }
     return {
-      inlet: toSensorPoints(historyData['inlet'] || [], 'pm25'),
-      outlet: toSensorPoints(historyData['outlet'] || [], 'pm25'),
+      inlet: toSensorPoints(historyData["inlet"] || [], "pm25"),
+      outlet: toSensorPoints(historyData["outlet"] || [], "pm25"),
     };
   }, [range, recentByNode, historyData]);
 
   const flowSeries = useMemo(() => {
     if (range === "realtime") {
       return {
-        inlet: socketToSensorPoints(recentByNode['inlet'] || [], 'flow_rate'),
-        outlet: socketToSensorPoints(recentByNode['outlet'] || [], 'flow_rate'),
+        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "flow_rate"),
+        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "flow_rate"),
       };
     }
     return {
-      inlet: toSensorPoints(historyData['inlet'] || [], 'flow_rate'),
-      outlet: toSensorPoints(historyData['outlet'] || [], 'flow_rate'),
+      inlet: toSensorPoints(historyData["inlet"] || [], "flow_rate"),
+      outlet: toSensorPoints(historyData["outlet"] || [], "flow_rate"),
     };
   }, [range, recentByNode, historyData]);
 
   // Latest values for stat cards
   const co2In = useMemo(() => {
-    return latestByNode['inlet']?.co2 ?? 0;
+    return latestByNode["inlet"]?.co2 ?? 0;
   }, [latestByNode]);
 
   const co2Out = useMemo(() => {
-    return latestByNode['outlet']?.co2 ?? 0;
+    return latestByNode["outlet"]?.co2 ?? 0;
   }, [latestByNode]);
 
   const efficiency = co2In > 0 ? ((co2In - co2Out) / co2In) * 100 : 0;
@@ -204,10 +200,10 @@ function DashboardPage() {
   // Health times
   const healthTimes = useMemo(() => {
     return {
-      inlet: latestByNode['inlet'] ? new Date(latestByNode['inlet'].timestamp).getTime() : 0,
-      outlet: latestByNode['outlet'] ? new Date(latestByNode['outlet'].timestamp).getTime() : 0,
-      solenoid_valves: latestByNode['solenoid_valves']
-        ? new Date(latestByNode['solenoid_valves'].timestamp).getTime()
+      inlet: latestByNode["inlet"] ? new Date(latestByNode["inlet"].timestamp).getTime() : 0,
+      outlet: latestByNode["outlet"] ? new Date(latestByNode["outlet"].timestamp).getTime() : 0,
+      solenoid_valves: latestByNode["solenoid_valves"]
+        ? new Date(latestByNode["solenoid_valves"].timestamp).getTime()
         : 0,
     };
   }, [latestByNode]);
@@ -218,8 +214,8 @@ function DashboardPage() {
 
   const liquidLevels = useMemo(() => {
     return {
-      inlet: latestByNode['inlet']?.level ?? 0,
-      outlet: latestByNode['outlet']?.level ?? 0,
+      inlet: latestByNode["inlet"]?.level ?? 0,
+      outlet: latestByNode["outlet"]?.level ?? 0,
     };
   }, [latestByNode]);
 
@@ -236,11 +232,13 @@ function DashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           {/* Connection status indicator */}
-          <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-sm border ${
-            connected
-              ? 'border-green-500/30 text-green-600 bg-green-500/10'
-              : 'border-red-500/30 text-red-500 bg-red-500/10'
-          }`}>
+          <div
+            className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-sm border ${
+              connected
+                ? "border-green-500/30 text-green-600 bg-green-500/10"
+                : "border-red-500/30 text-red-500 bg-red-500/10"
+            }`}
+          >
             {connected ? (
               <>
                 <Wifi className="h-3 w-3 animate-pulse" />
@@ -299,7 +297,13 @@ function DashboardPage() {
         <StatCard
           label="System status"
           value={!connected ? "Offline" : nodesOnline ? "Online" : "Degraded"}
-          hint={!connected ? "Backend disconnected" : nodesOnline ? "All nodes reporting" : "One or more nodes offline"}
+          hint={
+            !connected
+              ? "Backend disconnected"
+              : nodesOnline
+                ? "All nodes reporting"
+                : "One or more nodes offline"
+          }
         />
       </section>
 
@@ -307,7 +311,10 @@ function DashboardPage() {
       <section className="flex items-center gap-6 border border-border rounded-sm p-4 bg-card/30">
         <SensorHealthDot label="Inlet Node" lastSeen={healthTimes.inlet || Date.now()} />
         <SensorHealthDot label="Outlet Node" lastSeen={healthTimes.outlet || Date.now()} />
-        <SensorHealthDot label="Solenoid Valves" lastSeen={healthTimes.solenoid_valves || Date.now()} />
+        <SensorHealthDot
+          label="Solenoid Valves"
+          lastSeen={healthTimes.solenoid_valves || Date.now()}
+        />
       </section>
 
       {/* Hero CO2 chart */}
@@ -510,8 +517,14 @@ function ThresholdSettingsPanel() {
           <AccordionTrigger>Node configuration</AccordionTrigger>
           <AccordionContent>
             <div className="space-y-2 text-sm text-muted-foreground">
-              <p>Nodes: <span className="font-mono">inlet</span>, <span className="font-mono">outlet</span>, <span className="font-mono">solenoid_valves</span></p>
-              <p>MQTT topic: <span className="font-mono">co2monitor/#</span></p>
+              <p>
+                Nodes: <span className="font-mono">inlet</span>,{" "}
+                <span className="font-mono">outlet</span>,{" "}
+                <span className="font-mono">solenoid_valves</span>
+              </p>
+              <p>
+                MQTT topic: <span className="font-mono">co2monitor/#</span>
+              </p>
             </div>
           </AccordionContent>
         </AccordionItem>

@@ -79,7 +79,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "ZCharMC Monitor — CO2 Adsorption Dashboard" },
-      { name: "description", content: "Real-time CO2 adsorption monitoring for the ZCharMC research system." },
+      {
+        name: "description",
+        content: "Real-time CO2 adsorption monitoring for the ZCharMC research system.",
+      },
       { property: "og:title", content: "ZCharMC Monitor" },
       { property: "og:description", content: "Real-time CO2 adsorption monitoring dashboard." },
       { property: "og:type", content: "website" },

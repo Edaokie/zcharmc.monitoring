@@ -68,8 +68,8 @@ function AlertsPage() {
       }));
       setApiAlerts(mapped);
     } catch (err) {
-      console.error('[Alerts] Failed to load:', err);
-      toast.error('Failed to load alerts. Is the backend running?');
+      console.error("[Alerts] Failed to load:", err);
+      toast.error("Failed to load alerts. Is the backend running?");
     } finally {
       setLoading(false);
     }
@@ -81,7 +81,7 @@ function AlertsPage() {
 
   // Real-time alerts from live WebSocket data
   const liveAlerts: AlertRecord[] = recentReadings
-    .filter(r => r.co2 >= THRESHOLDS.co2Warn)
+    .filter((r) => r.co2 >= THRESHOLDS.co2Warn)
     .map((r, i) => ({
       id: `live-${i}`,
       timestamp: new Date(r.timestamp).getTime(),
@@ -89,9 +89,10 @@ function AlertsPage() {
       sensor: "CO2",
       type: r.co2 >= THRESHOLDS.co2Danger ? "co2_danger" : "co2_high",
       triggered: r.co2,
-      threshold: r.co2 >= THRESHOLDS.co2Danger
-        ? `> ${THRESHOLDS.co2Danger} ppm`
-        : `> ${THRESHOLDS.co2Warn} ppm`,
+      threshold:
+        r.co2 >= THRESHOLDS.co2Danger
+          ? `> ${THRESHOLDS.co2Danger} ppm`
+          : `> ${THRESHOLDS.co2Warn} ppm`,
       status: "active" as const,
     }));
 
@@ -99,14 +100,13 @@ function AlertsPage() {
   const allAlerts = [...liveAlerts.reverse(), ...apiAlerts];
 
   // Apply node filter
-  const filteredAlerts = nodeFilter === "All"
-    ? allAlerts
-    : allAlerts.filter(a => a.node === nodeFilter);
+  const filteredAlerts =
+    nodeFilter === "All" ? allAlerts : allAlerts.filter((a) => a.node === nodeFilter);
 
   // Chart data for selected alert context
   const contextChartData = recentReadings
-    .filter(r => selected ? r.node_id === selected.node : true)
-    .map(r => ({ t: new Date(r.timestamp).getTime(), v: r.co2 }))
+    .filter((r) => (selected ? r.node_id === selected.node : true))
+    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.co2 }))
     .sort((a, b) => a.t - b.t);
 
   // Export alerts as CSV
@@ -114,7 +114,7 @@ function AlertsPage() {
     const filter: ReadingsFilter = { range };
     if (nodeFilter !== "All") filter.node_id = nodeFilter;
     exportCSV(filter);
-    toast.success('Downloading alerts CSV...');
+    toast.success("Downloading alerts CSV...");
   }
 
   return (
@@ -171,7 +171,9 @@ function AlertsPage() {
           ]}
         />
         <button
-          onClick={() => { loadAlerts(); }}
+          onClick={() => {
+            loadAlerts();
+          }}
           disabled={loading}
           className="self-end bg-foreground text-background text-xs font-medium px-4 py-2 rounded-sm hover:bg-foreground/90 disabled:opacity-50 flex items-center gap-1.5"
         >
@@ -204,7 +206,12 @@ function AlertsPage() {
                 )}
               >
                 {a.status === "active" ? (
-                  <CircleDot className={cn("h-4 w-4 shrink-0", a.type === "co2_danger" ? "text-red-500" : "text-yellow-500")} />
+                  <CircleDot
+                    className={cn(
+                      "h-4 w-4 shrink-0",
+                      a.type === "co2_danger" ? "text-red-500" : "text-yellow-500",
+                    )}
+                  />
                 ) : (
                   <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
                 )}
@@ -218,11 +225,17 @@ function AlertsPage() {
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    Triggered <span className="font-mono">{a.triggered.toFixed(0)}</span> ppm · threshold {a.threshold}
+                    Triggered <span className="font-mono">{a.triggered.toFixed(0)}</span> ppm ·
+                    threshold {a.threshold}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className={cn("text-xs font-medium", a.status === "active" ? "text-red-500" : "text-muted-foreground")}>
+                  <div
+                    className={cn(
+                      "text-xs font-medium",
+                      a.status === "active" ? "text-red-500" : "text-muted-foreground",
+                    )}
+                  >
                     {a.status === "active" ? "Active" : "Resolved"}
                   </div>
                   <div className="text-[10px] text-muted-foreground">
@@ -248,19 +261,17 @@ function AlertsPage() {
         <aside className="border border-border rounded-sm bg-card p-5">
           <h2 className="text-sm font-semibold uppercase tracking-wide mb-3">Detail</h2>
           {!selected ? (
-            <p className="text-sm text-muted-foreground">
-              Select an alert to see context.
-            </p>
+            <p className="text-sm text-muted-foreground">Select an alert to see context.</p>
           ) : (
             <div className="space-y-4">
               <div className="text-xs space-y-1">
-                <Row label="Type" value={selected.type === "co2_danger" ? "CO2 DANGER" : "CO2 high"} />
+                <Row
+                  label="Type"
+                  value={selected.type === "co2_danger" ? "CO2 DANGER" : "CO2 high"}
+                />
                 <Row label="Node" value={selected.node} />
                 <Row label="Sensor" value={selected.sensor} />
-                <Row
-                  label="When"
-                  value={format(selected.timestamp, "yyyy-MM-dd HH:mm:ss")}
-                />
+                <Row label="When" value={format(selected.timestamp, "yyyy-MM-dd HH:mm:ss")} />
                 <Row label="Value" value={`${selected.triggered.toFixed(0)} ppm`} />
                 <Row label="Threshold" value={selected.threshold} />
                 <Row label="Status" value={selected.status} />
@@ -305,9 +316,7 @@ function FilterSelect({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[10px] uppercase tracking-widest text-muted-foreground">
-        {label}
-      </label>
+      <label className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
