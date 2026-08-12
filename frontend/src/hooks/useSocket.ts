@@ -77,18 +77,43 @@ export function useSocket(): UseSocketReturn {
   const [recentReadings, setRecentReadings] = useState<SocketReading[]>([]);
   const [recentByNode, setRecentByNode] = useState<Record<string, SocketReading[]>>({});
   const [valves, setValves] = useState<ValveState[]>([
-    { id: "sv1", label: "SV1 · Inlet A",          open: false, lastToggled: Date.now() - 1000 * 60 * 5  },
-    { id: "sv2", label: "SV2 · Inlet B",          open: false, lastToggled: Date.now() - 1000 * 60 * 10 },
-    { id: "sv3", label: "SV3 · Outlet",           open: false, lastToggled: Date.now() - 1000 * 60 * 3  },
-    { id: "sv4", label: "SV4 · Center Inlet",     open: false, lastToggled: Date.now() - 1000 * 60 * 15 },
-    { id: "sv5", label: "SV5 · Purge Left",       open: false, lastToggled: Date.now() - 1000 * 60 * 20 },
-    { id: "sv6", label: "SV6 · Purge Right",      open: false, lastToggled: Date.now() - 1000 * 60 * 25 },
+    { id: "sv1", label: "SV1 · Inlet A", open: false, lastToggled: Date.now() - 1000 * 60 * 5 },
+    { id: "sv2", label: "SV2 · Inlet B", open: false, lastToggled: Date.now() - 1000 * 60 * 10 },
+    { id: "sv3", label: "SV3 · Outlet", open: false, lastToggled: Date.now() - 1000 * 60 * 3 },
+    {
+      id: "sv4",
+      label: "SV4 · Center Inlet",
+      open: false,
+      lastToggled: Date.now() - 1000 * 60 * 15,
+    },
+    { id: "sv5", label: "SV5 · Purge Left", open: false, lastToggled: Date.now() - 1000 * 60 * 20 },
+    {
+      id: "sv6",
+      label: "SV6 · Purge Right",
+      open: false,
+      lastToggled: Date.now() - 1000 * 60 * 25,
+    },
   ]);
 
   const [vacuums, setVacuums] = useState<ValveState[]>([
-    { id: "vac1", label: "Vacuum 1 · Main Inlet", open: false, lastToggled: Date.now() - 1000 * 60 * 8  },
-    { id: "vac2", label: "Vacuum 2 · Left Col",  open: false, lastToggled: Date.now() - 1000 * 60 * 12 },
-    { id: "vac3", label: "Vacuum 3 · Right Col", open: false, lastToggled: Date.now() - 1000 * 60 * 18 },
+    {
+      id: "vac1",
+      label: "Vacuum 1 · Main Inlet",
+      open: false,
+      lastToggled: Date.now() - 1000 * 60 * 8,
+    },
+    {
+      id: "vac2",
+      label: "Vacuum 2 · Left Col",
+      open: false,
+      lastToggled: Date.now() - 1000 * 60 * 12,
+    },
+    {
+      id: "vac3",
+      label: "Vacuum 3 · Right Col",
+      open: false,
+      lastToggled: Date.now() - 1000 * 60 * 18,
+    },
   ]);
 
   const handleUpdate = useCallback((data: SocketReading) => {
@@ -207,5 +232,14 @@ export function useSocket(): UseSocketReturn {
     };
   }, [handleUpdate, handleValveUpdate]);
 
-  return { connected, latestByNode, recentReadings, recentByNode, valves, actuateValve, vacuums, actuateVacuum };
+  return {
+    connected,
+    latestByNode,
+    recentReadings,
+    recentByNode,
+    valves,
+    actuateValve,
+    vacuums,
+    actuateVacuum,
+  };
 }
