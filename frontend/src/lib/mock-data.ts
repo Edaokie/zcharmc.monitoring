@@ -47,8 +47,10 @@ export interface DashboardSnapshot {
   humidity: { node1: SensorPoint[]; node2: SensorPoint[] };
   pm25: { node1: SensorPoint[]; node2: SensorPoint[] };
   flow: { node1: SensorPoint[]; node2: SensorPoint[] };
-  level: { node1: number; node2: number };
+  pressure1: SensorPoint[];
+  pressure2: SensorPoint[];
   valves: ValveState[];
+  vacuums: ValveState[];
   health: { node1: number; node2: number; node3: number }; // last-seen epoch ms
 }
 
@@ -86,12 +88,21 @@ export function generateSnapshot(count = 60, intervalMs = 5000): DashboardSnapsh
       node1: generateSeries(count, intervalMs, 2.4, 0.6, 15),
       node2: generateSeries(count, intervalMs, 2.3, 0.5, 16),
     },
-    level: { node1: 62, node2: 41 },
+    // Pressure sensors — 0–150 psi testing range
+    pressure1: generateSeries(count, intervalMs, 85, 20, 17),
+    pressure2: generateSeries(count, intervalMs, 92, 18, 18),
     valves: [
-      { id: "n1a", label: "N1 valve A", open: true, lastToggled: Date.now() - 1000 * 60 * 12 },
-      { id: "n1b", label: "N1 valve B", open: false, lastToggled: Date.now() - 1000 * 60 * 45 },
-      { id: "n2a", label: "N2 valve A", open: true, lastToggled: Date.now() - 1000 * 60 * 8 },
-      { id: "n2b", label: "N2 valve B", open: false, lastToggled: Date.now() - 1000 * 60 * 90 },
+      { id: "sv1", label: "SV1 · Inlet A",      open: true,  lastToggled: Date.now() - 1000 * 60 * 5  },
+      { id: "sv2", label: "SV2 · Inlet B",      open: false, lastToggled: Date.now() - 1000 * 60 * 10 },
+      { id: "sv3", label: "SV3 · Outlet",       open: true,  lastToggled: Date.now() - 1000 * 60 * 3  },
+      { id: "sv4", label: "SV4 · Center Inlet", open: false, lastToggled: Date.now() - 1000 * 60 * 15 },
+      { id: "sv5", label: "SV5 · Purge Left",   open: false, lastToggled: Date.now() - 1000 * 60 * 20 },
+      { id: "sv6", label: "SV6 · Purge Right",  open: false, lastToggled: Date.now() - 1000 * 60 * 25 },
+    ],
+    vacuums: [
+      { id: "vac1", label: "Vacuum 1 · Main Inlet", open: true,  lastToggled: Date.now() - 1000 * 60 * 8  },
+      { id: "vac2", label: "Vacuum 2 · Left Col",   open: false, lastToggled: Date.now() - 1000 * 60 * 12 },
+      { id: "vac3", label: "Vacuum 3 · Right Col",  open: false, lastToggled: Date.now() - 1000 * 60 * 18 },
     ],
     health: {
       node1: Date.now() - 2000,
@@ -178,6 +189,8 @@ export const THRESHOLDS = {
   phMin: 5.5,
   phMax: 8.5,
   levelMin: 10,
+  pressureMax: 150,   // psi — testing upper limit
+  pressureWarn: 130,  // psi — warn at 130 psi
   offlineMs: 60_000,
 };
 

@@ -4,7 +4,6 @@ import { Settings2, Wifi, WifiOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { StatCard } from "@/components/monitor/StatCard";
 import { TimeSeriesChart } from "@/components/monitor/TimeSeriesChart";
-import { LevelGauge } from "@/components/monitor/LevelGauge";
 import { ValveStatusCard } from "@/components/monitor/ValveStatusCard";
 import { SensorHealthDot } from "@/components/monitor/SensorHealthDot";
 import { TimeRangeControl, type TimeRange } from "@/components/monitor/TimeRangeControl";
@@ -52,7 +51,8 @@ function DashboardPage() {
   const [range, setRange] = useState<TimeRange>("realtime");
 
   // Real-time data from WebSocket
-  const { connected, latestByNode, recentByNode, valves, actuateValve } = useSocket();
+  const { connected, latestByNode, recentByNode, valves, actuateValve, vacuums, actuateVacuum } =
+    useSocket();
 
   // Historical data for non-realtime views
   const [historyData, setHistoryData] = useState<Record<string, Reading[]>>({});
@@ -92,32 +92,6 @@ function DashboardPage() {
     return {
       inlet: toSensorPoints(historyData["inlet"] || [], "co2"),
       outlet: toSensorPoints(historyData["outlet"] || [], "co2"),
-    };
-  }, [range, recentByNode, historyData]);
-
-  const no2Series = useMemo(() => {
-    if (range === "realtime") {
-      return {
-        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "no2"),
-        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "no2"),
-      };
-    }
-    return {
-      inlet: toSensorPoints(historyData["inlet"] || [], "no2"),
-      outlet: toSensorPoints(historyData["outlet"] || [], "no2"),
-    };
-  }, [range, recentByNode, historyData]);
-
-  const so2Series = useMemo(() => {
-    if (range === "realtime") {
-      return {
-        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "so2"),
-        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "so2"),
-      };
-    }
-    return {
-      inlet: toSensorPoints(historyData["inlet"] || [], "so2"),
-      outlet: toSensorPoints(historyData["outlet"] || [], "so2"),
     };
   }, [range, recentByNode, historyData]);
 
@@ -186,14 +160,25 @@ function DashboardPage() {
     };
   }, [range, recentByNode, historyData]);
 
-  // Latest values for stat cards
-  const co2In = useMemo(() => {
-    return latestByNode["inlet"]?.co2 ?? 0;
-  }, [latestByNode]);
+  // Pressure sensors — node_id = "inlet" for PS-01 (left tank), "outlet" for PS-02 (right tank)
+  const pressureSeries = useMemo(() => {
+    if (range === "realtime") {
+      return {
+        ps01: socketToSensorPoints(recentByNode["inlet"] || [], "pressure1"),
+        ps02: socketToSensorPoints(recentByNode["outlet"] || [], "pressure2"),
+      };
+    }
+    return {
+      ps01: toSensorPoints(historyData["inlet"] || [], "pressure1"),
+      ps02: toSensorPoints(historyData["outlet"] || [], "pressure2"),
+    };
+  }, [range, recentByNode, historyData]);
 
-  const co2Out = useMemo(() => {
-    return latestByNode["outlet"]?.co2 ?? 0;
-  }, [latestByNode]);
+  // Latest values for stat cards
+  const co2In = useMemo(() => latestByNode["inlet"]?.co2 ?? 0, [latestByNode]);
+  const co2Out = useMemo(() => latestByNode["outlet"]?.co2 ?? 0, [latestByNode]);
+  const ps01 = useMemo(() => latestByNode["inlet"]?.pressure1 ?? 0, [latestByNode]);
+  const ps02 = useMemo(() => latestByNode["outlet"]?.pressure2 ?? 0, [latestByNode]);
 
   const efficiency = co2In > 0 ? ((co2In - co2Out) / co2In) * 100 : 0;
 
@@ -212,14 +197,14 @@ function DashboardPage() {
     return Object.values(healthTimes).every((t) => t > 0 && Date.now() - t < THRESHOLDS.offlineMs);
   }, [healthTimes]);
 
-  const liquidLevels = useMemo(() => {
-    return {
-      inlet: latestByNode["inlet"]?.level ?? 0,
-      outlet: latestByNode["outlet"]?.level ?? 0,
-    };
-  }, [latestByNode]);
-
   const hasData = co2Series.inlet.length > 0 || co2Series.outlet.length > 0;
+
+  // Pressure status helper
+  function pressureStatus(v: number): "normal" | "warning" | "danger" {
+    if (v >= THRESHOLDS.pressureMax) return "danger";
+    if (v >= THRESHOLDS.pressureWarn) return "warning";
+    return "normal";
+  }
 
   return (
     <div className="p-8 space-y-6">
@@ -275,7 +260,7 @@ function DashboardPage() {
         </div>
       )}
 
-      {/* Stat row */}
+      {/* ── Stat row ── */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Adsorption efficiency"
@@ -283,13 +268,29 @@ function DashboardPage() {
           unit={hasData ? "%" : ""}
         />
         <StatCard
-          label="CO2 inlet"
+          label="CO₂ inlet"
           value={co2In > 0 ? co2In.toFixed(0) : "—"}
           unit={co2In > 0 ? "ppm" : ""}
           status={co2In > 0 ? co2Status(co2In) : undefined}
         />
         <StatCard
-          label="CO2 outlet"
+          label="PS-01 (Left Tank)"
+          value={ps01 > 0 ? ps01.toFixed(1) : "—"}
+          unit={ps01 > 0 ? "psi" : ""}
+          status={ps01 > 0 ? pressureStatus(ps01) : undefined}
+        />
+        <StatCard
+          label="PS-02 (Right Tank)"
+          value={ps02 > 0 ? ps02.toFixed(1) : "—"}
+          unit={ps02 > 0 ? "psi" : ""}
+          status={ps02 > 0 ? pressureStatus(ps02) : undefined}
+        />
+      </section>
+
+      {/* ── System status row ── */}
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="CO₂ outlet"
           value={co2Out > 0 ? co2Out.toFixed(0) : "—"}
           unit={co2Out > 0 ? "ppm" : ""}
           status={co2Out > 0 ? co2Status(co2Out) : undefined}
@@ -307,7 +308,7 @@ function DashboardPage() {
         />
       </section>
 
-      {/* Sensor health */}
+      {/* ── Sensor health ── */}
       <section className="flex items-center gap-6 border border-border rounded-sm p-4 bg-card/30">
         <SensorHealthDot label="Inlet Node" lastSeen={healthTimes.inlet || Date.now()} />
         <SensorHealthDot label="Outlet Node" lastSeen={healthTimes.outlet || Date.now()} />
@@ -317,15 +318,15 @@ function DashboardPage() {
         />
       </section>
 
-      {/* Hero CO2 chart */}
-      <Panel title="CO2 inlet vs outlet" subtitle="Solid = Inlet · Dashed = Outlet">
+      {/* ── Hero CO₂ chart ── */}
+      <Panel title="CO₂ inlet vs outlet" subtitle="Solid = Inlet · Dashed = Outlet">
         {hasData ? (
           <TimeSeriesChart
             height={320}
             yLabel="ppm"
             series={[
-              { name: "Inlet CO2", data: co2Series.inlet },
-              { name: "Outlet CO2", data: co2Series.outlet, dashed: true },
+              { name: "Inlet CO₂", data: co2Series.inlet },
+              { name: "Outlet CO₂", data: co2Series.outlet, dashed: true },
             ]}
             thresholds={[
               { value: THRESHOLDS.co2Warn, label: "Warning 3000" },
@@ -333,41 +334,34 @@ function DashboardPage() {
             ]}
           />
         ) : (
-          <NoDataPlaceholder message="Waiting for real-time CO2 data from sensors..." />
+          <NoDataPlaceholder message="Waiting for real-time CO₂ data from sensors..." />
+        )}
+      </Panel>
+
+      {/* ── Pressure sensors ── */}
+      <Panel
+        title="Pressure Sensor 01 & 02"
+        subtitle="PS-01 Left Tank (solid) · PS-02 Right Tank (dashed) · Max 150 psi"
+      >
+        {pressureSeries.ps01.length > 0 || pressureSeries.ps02.length > 0 ? (
+          <TimeSeriesChart
+            height={280}
+            yLabel="psi"
+            series={[
+              { name: "PS-01 Left Tank", data: pressureSeries.ps01 },
+              { name: "PS-02 Right Tank", data: pressureSeries.ps02, dashed: true },
+            ]}
+            thresholds={[
+              { value: THRESHOLDS.pressureWarn, label: "Warn 130 psi" },
+              { value: THRESHOLDS.pressureMax, label: "Max 150 psi" },
+            ]}
+          />
+        ) : (
+          <NoDataPlaceholder message="Waiting for pressure sensor data..." />
         )}
       </Panel>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* NO2 */}
-        <Panel title="NO2 Concentration" subtitle="Inlet vs Outlet">
-          {hasData ? (
-            <TimeSeriesChart
-              yLabel="ppb"
-              series={[
-                { name: "Inlet NO2", data: no2Series.inlet },
-                { name: "Outlet NO2", data: no2Series.outlet, dashed: true },
-              ]}
-            />
-          ) : (
-            <NoDataPlaceholder message="Waiting for NO2 data..." />
-          )}
-        </Panel>
-
-        {/* SO2 */}
-        <Panel title="SO2 Concentration" subtitle="Inlet vs Outlet">
-          {hasData ? (
-            <TimeSeriesChart
-              yLabel="ppb"
-              series={[
-                { name: "Inlet SO2", data: so2Series.inlet },
-                { name: "Outlet SO2", data: so2Series.outlet, dashed: true },
-              ]}
-            />
-          ) : (
-            <NoDataPlaceholder message="Waiting for SO2 data..." />
-          )}
-        </Panel>
-
         {/* pH */}
         <Panel title="pH Level" subtitle="Neutral threshold = 7.0">
           {hasData ? (
@@ -431,36 +425,47 @@ function DashboardPage() {
         </Panel>
       </div>
 
-      {/* Liquid + valves */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Panel title="Liquid level" subtitle="Storage tank percentage">
-          <div className="flex gap-6 justify-around py-4">
-            <LevelGauge label="Inlet Level" value={Math.round(liquidLevels.inlet)} />
-            <LevelGauge label="Outlet Level" value={Math.round(liquidLevels.outlet)} />
-          </div>
-        </Panel>
-        <div className="lg:col-span-2">
-          <Panel
-            title="Valve status · Solenoid valves"
-            subtitle={isAdmin ? "Click a valve to actuate (confirm required)" : "Read-only"}
-          >
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {valves.map((v) => (
-                <ValveStatusCard
-                  key={v.id}
-                  valve={v}
-                  isAdmin={isAdmin}
-                  onToggle={(id) => {
-                    if (!isAdmin) return;
-                    actuateValve(id, !v.open);
-                    toast.success(`Sent toggle request for Valve ${id}`);
-                  }}
-                />
-              ))}
-            </div>
-          </Panel>
+      {/* ── Solenoid Valves SV1–SV6 ── */}
+      <Panel
+        title="Solenoid Valves · SV1–SV6"
+        subtitle={isAdmin ? "Click a valve to actuate (confirm required)" : "Read-only"}
+      >
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+          {valves.map((v) => (
+            <ValveStatusCard
+              key={v.id}
+              valve={v}
+              isAdmin={isAdmin}
+              onToggle={(id) => {
+                if (!isAdmin) return;
+                actuateValve(id, !v.open);
+                toast.success(`Sent toggle request for ${v.label}`);
+              }}
+            />
+          ))}
         </div>
-      </div>
+      </Panel>
+
+      {/* ── Vacuum Actuators ── */}
+      <Panel
+        title="Vacuum Actuators · Vacuum 1–3"
+        subtitle={isAdmin ? "Click to toggle vacuum pump (confirm required)" : "Read-only"}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {vacuums.map((v) => (
+            <ValveStatusCard
+              key={v.id}
+              valve={v}
+              isAdmin={isAdmin}
+              onToggle={(id) => {
+                if (!isAdmin) return;
+                actuateVacuum(id, !v.open);
+                toast.success(`Sent toggle request for ${v.label}`);
+              }}
+            />
+          ))}
+        </div>
+      </Panel>
     </div>
   );
 }
@@ -505,11 +510,12 @@ function ThresholdSettingsPanel() {
           <AccordionTrigger>Alarm thresholds</AccordionTrigger>
           <AccordionContent>
             <div className="space-y-3 text-sm">
-              <Row label="CO2 warning (ppm)" value={THRESHOLDS.co2Warn} />
-              <Row label="CO2 danger (ppm)" value={THRESHOLDS.co2Danger} />
+              <Row label="CO₂ warning (ppm)" value={THRESHOLDS.co2Warn} />
+              <Row label="CO₂ danger (ppm)" value={THRESHOLDS.co2Danger} />
               <Row label="pH min" value={THRESHOLDS.phMin} />
               <Row label="pH max" value={THRESHOLDS.phMax} />
-              <Row label="Liquid level min (%)" value={THRESHOLDS.levelMin} />
+              <Row label="Pressure warn (psi)" value={THRESHOLDS.pressureWarn} />
+              <Row label="Pressure max (psi)" value={THRESHOLDS.pressureMax} />
             </div>
           </AccordionContent>
         </AccordionItem>
@@ -524,6 +530,12 @@ function ThresholdSettingsPanel() {
               </p>
               <p>
                 MQTT topic: <span className="font-mono">co2monitor/#</span>
+              </p>
+              <p>
+                Valves: <span className="font-mono">SV1–SV6</span>
+              </p>
+              <p>
+                Vacuums: <span className="font-mono">Vacuum 1, 2, 3</span>
               </p>
             </div>
           </AccordionContent>

@@ -22,6 +22,16 @@ export interface SocketReading {
   pm25?: number;
   flow_rate?: number;
   level?: number;
+  /** Pressure Sensor 01 — left tank (psi) */
+  pressure1?: number;
+  /** Pressure Sensor 02 — right tank (psi) */
+  pressure2?: number;
+  /** Vacuum pump 1 on/off */
+  vacuum1?: boolean;
+  /** Vacuum pump 2 on/off */
+  vacuum2?: boolean;
+  /** Vacuum pump 3 on/off */
+  vacuum3?: boolean;
   timestamp: string;
 }
 
@@ -41,10 +51,14 @@ interface UseSocketReturn {
   recentReadings: SocketReading[];
   /** Rolling buffer per node_id, newest last */
   recentByNode: Record<string, SocketReading[]>;
-  /** Current solenoid valve states */
+  /** Current solenoid valve states (SV1–SV6) */
   valves: ValveState[];
-  /** Actuate/toggle a valve */
+  /** Actuate/toggle a solenoid valve */
   actuateValve: (valveId: string, open: boolean) => void;
+  /** Vacuum pump states (Vacuum 1–3) */
+  vacuums: ValveState[];
+  /** Actuate/toggle a vacuum pump */
+  actuateVacuum: (vacuumId: string, on: boolean) => void;
 }
 
 const MAX_BUFFER = 120; // keep last 120 data points per node (~10 min at 5s interval)
@@ -63,10 +77,18 @@ export function useSocket(): UseSocketReturn {
   const [recentReadings, setRecentReadings] = useState<SocketReading[]>([]);
   const [recentByNode, setRecentByNode] = useState<Record<string, SocketReading[]>>({});
   const [valves, setValves] = useState<ValveState[]>([
-    { id: "n1a", label: "N1 valve A", open: true, lastToggled: Date.now() - 1000 * 60 * 12 },
-    { id: "n1b", label: "N1 valve B", open: false, lastToggled: Date.now() - 1000 * 60 * 45 },
-    { id: "n2a", label: "N2 valve A", open: true, lastToggled: Date.now() - 1000 * 60 * 8 },
-    { id: "n2b", label: "N2 valve B", open: false, lastToggled: Date.now() - 1000 * 60 * 90 },
+    { id: "sv1", label: "SV1 · Inlet A",          open: false, lastToggled: Date.now() - 1000 * 60 * 5  },
+    { id: "sv2", label: "SV2 · Inlet B",          open: false, lastToggled: Date.now() - 1000 * 60 * 10 },
+    { id: "sv3", label: "SV3 · Outlet",           open: false, lastToggled: Date.now() - 1000 * 60 * 3  },
+    { id: "sv4", label: "SV4 · Center Inlet",     open: false, lastToggled: Date.now() - 1000 * 60 * 15 },
+    { id: "sv5", label: "SV5 · Purge Left",       open: false, lastToggled: Date.now() - 1000 * 60 * 20 },
+    { id: "sv6", label: "SV6 · Purge Right",      open: false, lastToggled: Date.now() - 1000 * 60 * 25 },
+  ]);
+
+  const [vacuums, setVacuums] = useState<ValveState[]>([
+    { id: "vac1", label: "Vacuum 1 · Main Inlet", open: false, lastToggled: Date.now() - 1000 * 60 * 8  },
+    { id: "vac2", label: "Vacuum 2 · Left Col",  open: false, lastToggled: Date.now() - 1000 * 60 * 12 },
+    { id: "vac3", label: "Vacuum 3 · Right Col", open: false, lastToggled: Date.now() - 1000 * 60 * 18 },
   ]);
 
   const handleUpdate = useCallback((data: SocketReading) => {
@@ -122,16 +144,31 @@ export function useSocket(): UseSocketReturn {
       if (socketRef.current && connected) {
         console.log(`[WS] Emitting actuate_valve for ${valveId} -> ${open}`);
         socketRef.current.emit("actuate_valve", { valve_id: valveId, open });
-
-        // Optimistically update locally in case backend doesn't broadcast immediately
         setValves((prev) =>
           prev.map((v) => (v.id === valveId ? { ...v, open, lastToggled: Date.now() } : v)),
         );
       } else {
-        // Offline fallback: toggle directly in state for offline demo
         console.log(`[WS] Offline mode: Toggle valve ${valveId} to ${open}`);
         setValves((prev) =>
           prev.map((v) => (v.id === valveId ? { ...v, open, lastToggled: Date.now() } : v)),
+        );
+      }
+    },
+    [connected],
+  );
+
+  const actuateVacuum = useCallback(
+    (vacuumId: string, on: boolean) => {
+      if (socketRef.current && connected) {
+        console.log(`[WS] Emitting actuate_vacuum for ${vacuumId} -> ${on}`);
+        socketRef.current.emit("actuate_vacuum", { vacuum_id: vacuumId, on });
+        setVacuums((prev) =>
+          prev.map((v) => (v.id === vacuumId ? { ...v, open: on, lastToggled: Date.now() } : v)),
+        );
+      } else {
+        console.log(`[WS] Offline mode: Toggle vacuum ${vacuumId} to ${on}`);
+        setVacuums((prev) =>
+          prev.map((v) => (v.id === vacuumId ? { ...v, open: on, lastToggled: Date.now() } : v)),
         );
       }
     },
@@ -170,5 +207,5 @@ export function useSocket(): UseSocketReturn {
     };
   }, [handleUpdate, handleValveUpdate]);
 
-  return { connected, latestByNode, recentReadings, recentByNode, valves, actuateValve };
+  return { connected, latestByNode, recentReadings, recentByNode, valves, actuateValve, vacuums, actuateVacuum };
 }

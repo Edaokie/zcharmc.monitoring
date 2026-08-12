@@ -21,6 +21,16 @@ export interface Reading {
   pm25: number;
   flow_rate: number;
   level: number;
+  /** Pressure Sensor 01 — left tank (psi) */
+  pressure1: number;
+  /** Pressure Sensor 02 — right tank (psi) */
+  pressure2: number;
+  /** Vacuum pump 1 — bottom / main inlet (on=true) */
+  vacuum1: boolean;
+  /** Vacuum pump 2 — top-left / left column (on=true) */
+  vacuum2: boolean;
+  /** Vacuum pump 3 — top-right / right column (on=true) */
+  vacuum3: boolean;
   timestamp: string;
 }
 
@@ -45,6 +55,12 @@ export interface Stats {
   min_humidity: number | null;
   max_humidity: number | null;
   avg_humidity: number | null;
+  min_pressure1: number | null;
+  max_pressure1: number | null;
+  avg_pressure1: number | null;
+  min_pressure2: number | null;
+  max_pressure2: number | null;
+  avg_pressure2: number | null;
 }
 
 export interface AlertReading extends Reading {
