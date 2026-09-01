@@ -38,23 +38,23 @@ inline void maintainMQTT() {
     mqtt.loop();
 }
 
-// Publish all 9 sensor fields for inlet or outlet nodes
+// Publish sensor fields for inlet or outlet nodes
 inline void publishSensorData(
     const char* nodeId,
-    float co2, float no2, float so2, float ph,
-    float temp, float hum, float pm25, float flow, float level
+    float co2, float ph,
+    float temp, float hum, float pm25, float flow, float level,
+    float weight = 0.0f
 ) {
     JsonDocument doc;
     doc["node_id"]     = nodeId;
     doc["co2"]         = co2;
-    doc["no2"]         = no2;
-    doc["so2"]         = so2;
     doc["ph"]          = ph;
     doc["temperature"] = temp;
     doc["humidity"]    = hum;
     doc["pm25"]        = pm25;
     doc["flow_rate"]   = flow;
     doc["level"]       = level;
+    doc["weight"]      = weight;   // reserved — not yet wired to hardware
     doc["timestamp"]   = millis();
 
     char buf[MQTT_BUFFER_SIZE];

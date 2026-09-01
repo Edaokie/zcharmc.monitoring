@@ -87,31 +87,6 @@
 #define CO2_NORMAL_MAX          3000.0f
 #define CO2_WARN_MAX            5000.0f
 
-// ─────────────────────────────────────────
-// Fake sensor ranges (used while no real hardware)
-// INLET node  → high CO2 entering adsorber
-// OUTLET node → low CO2 after adsorption
-// ─────────────────────────────────────────
-
-#define FAKE_CO2_MIN            3000    // outlet: change to 800
-#define FAKE_CO2_MAX            6000    // outlet: change to 2500
-#define FAKE_NO2_MIN            35
-#define FAKE_NO2_MAX            60
-#define FAKE_SO2_MIN            20
-#define FAKE_SO2_MAX            45
-#define FAKE_PH_MIN_X10         65      // 6.5
-#define FAKE_PH_MAX_X10         82      // 8.2
-#define FAKE_TEMP_MIN           25
-#define FAKE_TEMP_MAX           35
-#define FAKE_HUM_MIN            55
-#define FAKE_HUM_MAX            75
-#define FAKE_PM25_MIN           20
-#define FAKE_PM25_MAX           55
-#define FAKE_FLOW_MIN_X10       18      // 1.8 L/min
-#define FAKE_FLOW_MAX_X10       30      // 3.0 L/min
-#define FAKE_LEVEL_MIN          40
-#define FAKE_LEVEL_MAX          85
-
 // Fake pressure range (PSI) for solenoid_valves node testing
 #define FAKE_PRESSURE_MIN       100
 #define FAKE_PRESSURE_MAX       200

@@ -87,17 +87,22 @@ void loop() {
         unsigned long now = millis();
         if (now - lastPublish >= PUBLISH_INTERVAL_MS) {
             lastPublish = now;
+            // TODO: replace 0.0f stubs with real sensor read calls
+            // e.g. co2  = mhz19.getCO2();
+            //      temp = sht31.readTemperature();
+            //      hum  = sht31.readHumidity();
+            //      ph   = readAnalogPH(PH_PIN);
+            //      etc.
             publishSensorData(
                 NODE_ID,
-                random(FAKE_CO2_MIN,   FAKE_CO2_MAX),
-                random(FAKE_NO2_MIN,   FAKE_NO2_MAX),
-                random(FAKE_SO2_MIN,   FAKE_SO2_MAX),
-                random(FAKE_PH_MIN_X10, FAKE_PH_MAX_X10) / 10.0f,
-                random(FAKE_TEMP_MIN,  FAKE_TEMP_MAX),
-                random(FAKE_HUM_MIN,   FAKE_HUM_MAX),
-                random(FAKE_PM25_MIN,  FAKE_PM25_MAX),
-                random(FAKE_FLOW_MIN_X10, FAKE_FLOW_MAX_X10) / 10.0f,
-                random(FAKE_LEVEL_MIN, FAKE_LEVEL_MAX)
+                0.0f,   // co2
+                0.0f,   // ph
+                0.0f,   // temperature
+                0.0f,   // humidity
+                0.0f,   // pm25
+                0.0f,   // flow_rate
+                0.0f,   // level
+                0.0f    // weight
             );
         }
     }
