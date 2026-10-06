@@ -21,3 +21,9 @@ backend/.env
 # Node
 frontend/node_modules/
 frontend/dist/
+# secrets
+firmware/include/secrets.h
+
+# editor / OS
+.vscode/
+.DS_Store
