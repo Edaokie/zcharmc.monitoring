@@ -1,5 +1,6 @@
 #include "valve_control.h"
 #include "config.h"
+#include "nodes_config/sv_config.h"
 
 // Pin lookup table — index matches SV1..SV6 constants
 static const uint8_t SV_PINS[VALVE_COUNT] = {

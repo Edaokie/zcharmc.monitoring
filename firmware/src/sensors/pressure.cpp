@@ -1,5 +1,6 @@
 #include "pressure.h"
 #include "config.h"
+#include "nodes_config/sv_config.h"
 
 static const uint8_t PRESSURE_PINS[2] = { O1_PIN, O2_PIN };
 

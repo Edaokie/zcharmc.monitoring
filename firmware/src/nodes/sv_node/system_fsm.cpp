@@ -4,6 +4,7 @@
 #include "vacuum_control.h"
 #include "pressure.h"
 #include "config.h"
+#include "nodes_config/sv_config.h"
 #include <Arduino.h>
 
 // ─────────────────────────────────────────

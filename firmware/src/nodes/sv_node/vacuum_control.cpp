@@ -1,5 +1,6 @@
 #include "vacuum_control.h"
 #include "config.h"
+#include "nodes_config/sv_config.h"
 
 static const uint8_t VACUUM_PINS[3] = { VACUUM1_PIN, VACUUM2_PIN, VACUUM3_PIN };
 static bool vacuumState[3] = { false };
