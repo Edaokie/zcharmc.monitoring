@@ -1,9 +1,11 @@
 from django.urls import path
 from rest_framework.authtoken.views import obtain_auth_token
 
-from . import views
+from . import views, ota
 
 urlpatterns = [
+    path("api/devices/<slug:device_id>/ota", ota.target),
+    path("api/devices/<slug:device_id>/report", ota.report),
     path("", views.index),
     path("api/health", views.health),
     path("api/operations", views.operations),

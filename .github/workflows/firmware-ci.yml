@@ -1,57 +1,40 @@
 name: Firmware CI
-
 on:
   push:
-    branches:
-      - develop
-    paths:
-      - "firmware/**"
-      - ".github/workflows/firmware-ci.yml"
+    paths: ['firmware/**', '.github/workflows/firmware-*.yml']
   pull_request:
-    branches:
-      - develop
-    paths:
-      - "firmware/**"
-      - ".github/workflows/firmware-ci.yml"
-
+    paths: ['firmware/**', '.github/workflows/firmware-*.yml']
+permissions:
+  contents: read
 jobs:
-  build-test-analyze:
-    name: Build, Test, and Analyze (${{ matrix.env }})
+  host-tests:
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        env: [dev, prod]    # runs twice: once for dev, once for prod
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Cache PlatformIO
-        uses: actions/cache@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          path: |
-            ~/.cache/pip
-            ~/.platformio/.cache
-          key: ${{ runner.os }}-platformio-${{ hashFiles('firmware/platformio.ini') }}
-          restore-keys: |
-            ${{ runner.os }}-platformio-
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+          python-version: '3.12'
+      - run: python -m unittest discover -s firmware/tests_host -v
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [inlet, outlet, control]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-
-      - name: Install PlatformIO
-        run: pip install --upgrade platformio
-
-      - name: Build firmware (${{ matrix.env }})
-        run: pio run -d firmware -e ${{ matrix.env }}
-
-      - name: Run native unit tests
-        run: pio test -d firmware -e native
-        continue-on-error: true    # no tests written yet, skip for now
-
-      - name: Run static code analysis
-        run: pio check -d firmware
-        continue-on-error: true    # warnings won't break the build
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-idf-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini', 'firmware/sdkconfig.defaults') }}
+      - run: pip install platformio==6.1.19
+      - run: pio run -d firmware -e '${{ matrix.profile }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ matrix.profile }}-${{ github.sha }}
+          path: firmware/.pio/build/${{ matrix.profile }}/firmware.bin
+          if-no-files-found: error
+          retention-days: 14

@@ -124,3 +124,7 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "INFO"},
 }
+
+# Public trust anchor, not a private signing key. Must match initial USB provisioning.
+OTA_SIGNING_PUBLIC_KEY = os.getenv("OTA_SIGNING_PUBLIC_KEY", "").replace("\\n", "\n")
+OTA_ASSET_HOSTS = env_list("OTA_ASSET_HOSTS", "github.com,objects.githubusercontent.com,release-assets.githubusercontent.com")

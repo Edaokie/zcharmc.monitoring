@@ -26,9 +26,12 @@ Devices will send readings to Railway, not Vercel. Django validates and stores e
 reading in PostgreSQL, then sends live updates to connected dashboards. Browsers
 load the dashboard from Vercel and retrieve their data from Railway.
 
-**Physical device integration is still pending.** The existing firmware uses its
-legacy MQTT configuration. Deploying the web applications does not change that
-firmware or connect the ESP32 devices to the cloud automatically.
+**Physical telemetry integration is still pending.** The active firmware now uses
+native ESP-IDF/FreeRTOS with an approved signed OTA release foundation for three
+roles. These bench images provide provisioning and updates; native sensor drivers,
+telemetry buffering/uploads and the operating control cycle are still pending.
+See the [firmware guide](firmware/README.md) before flashing any board. Deploying
+the web applications does not update ESP32 devices automatically.
 
 ## Repository layout
 

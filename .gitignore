@@ -36,3 +36,11 @@ frontend/.env.*
 !frontend/.env.example
 frontend/.vercel/
 frontend/.output/
+
+# Device provisioning and firmware signing secrets
+firmware/.keys/
+firmware/provisioning/
+firmware/release-output/
+firmware/sdkconfig.*
+!firmware/sdkconfig.defaults
+firmware/managed_components/

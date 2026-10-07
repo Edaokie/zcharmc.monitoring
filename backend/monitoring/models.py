@@ -56,3 +56,56 @@ class IngestionStatus(models.Model):
     last_accepted_at = models.DateTimeField(null=True, blank=True)
     last_failure_at = models.DateTimeField(null=True, blank=True)
     last_outcome = models.CharField(max_length=32, blank=True)
+
+
+class FirmwareRelease(models.Model):
+    version = models.CharField(max_length=31)
+    profile = models.CharField(max_length=16, choices=[(p, p) for p in ("inlet", "outlet", "control")])
+    hardware = models.CharField(max_length=64)
+    manifest = models.TextField(help_text="Exact canonical signed JSON; do not reformat.")
+    signature = models.TextField(help_text="Base64 RSA-PSS manifest signature.")
+    base_url = models.URLField(help_text="HTTPS directory containing image and .bin.sig release assets.")
+    enabled = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["version", "profile", "hardware"], name="unique_firmware_release")]
+
+    def __str__(self):
+        return f"{self.version} / {self.profile} / {self.hardware}"
+
+    def clean(self):
+        from .ota import validate_release
+        validate_release(self)
+
+
+class Device(models.Model):
+    device_id = models.SlugField(max_length=64, unique=True)
+    profile = models.CharField(max_length=16, choices=[(p, p) for p in ("inlet", "outlet", "control")])
+    hardware = models.CharField(max_length=64)
+    credential_hash = models.CharField(max_length=64, editable=False)
+    enabled = models.BooleanField(default=True)
+    desired_release = models.ForeignKey(FirmwareRelease, null=True, blank=True, on_delete=models.PROTECT)
+    approval_generation = models.PositiveBigIntegerField(default=0)
+    reported_version = models.CharField(max_length=31, blank=True)
+    reported_status = models.CharField(max_length=32, blank=True)
+    maintenance = models.BooleanField(default=False)
+    last_seen = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return self.device_id
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.desired_release_id:
+            release = self.desired_release
+            if (release.profile, release.hardware) != (self.profile, self.hardware) or not release.enabled:
+                raise ValidationError("Choose an enabled release matching this device's profile and hardware.")
+
+
+class FirmwareApproval(models.Model):
+    device = models.ForeignKey(Device, on_delete=models.PROTECT)
+    release = models.ForeignKey(FirmwareRelease, null=True, on_delete=models.PROTECT)
+    generation = models.PositiveBigIntegerField()
+    approved_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)

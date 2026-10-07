@@ -293,3 +293,19 @@ service. See `tools/README.md` for the isolated fault simulation.
 
 For release checks, diagnostics and recovery practices, see the
 [maintenance guide](../docs/MAINTENANCE.md).
+
+## Approved device firmware updates
+
+The backend now stores signed release metadata, devices with separate hashed
+credentials, installation targets and a staff approval audit. Run migrations before
+serving the new endpoints. Configure `OTA_SIGNING_PUBLIC_KEY` with the public PEM
+from `firmware/keys/release-public.pem`; an absent/invalid key disables release
+registration and target delivery. No private firmware signing key belongs on Railway.
+
+`GET /api/devices/<device_id>/ota` and `POST /api/devices/<device_id>/report` require
+that specific device's bearer token, regardless of `ALLOW_PUBLIC_READ`. The
+existing ingestion API and mock dashboard login are unchanged. Django staff manage
+releases and device targets through admin; the frontend cannot approve updates.
+Provisioning and release import commands are administrative operations, not public
+API endpoints. Follow the [firmware release guide](../firmware/README.md) for exact
+setup, signing, first USB installation, staged approval and bench limitations.

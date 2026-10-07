@@ -1,0 +1,2 @@
+/* Generated from the provisioned public trust anchor. */
+static const unsigned char release_key[] = "@RELEASE_KEY@";

@@ -1,65 +1,71 @@
-name: Firmware Release Artifact
-
-# ── Only runs when YOU manually trigger it ──
-# Go to GitHub → Actions → Firmware Release Artifact → Run workflow
+name: Signed Firmware Release
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (e.g. 0.1.0)'
-        required: true
-        default: '0.1.0'
-
+  push:
+    tags: ['firmware-v*']
+permissions:
+  contents: read
+concurrency:
+  group: firmware-release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  build-release-artifact:
-    name: Build Firmware Binary (prod)
+  release:
     runs-on: ubuntu-latest
-
+    # Hosting owner must configure required reviewers for this environment.
+    environment: firmware-release
+    permissions:
+      contents: write
     steps:
-      # Step 1 — Download your repo code
-      - name: Checkout repository
-        uses: actions/checkout@v4    # fixed from v6
-
-      # Step 2 — Cache PlatformIO packages
-      - name: Cache PlatformIO
-        uses: actions/cache@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          path: |
-            ~/.cache/pip
-            ~/.platformio/.cache
-          key: ${{ runner.os }}-platformio-${{ hashFiles('firmware/platformio.ini') }}
-          restore-keys: |
-            ${{ runner.os }}-platformio-
-
-      # Step 3 — Install Python
-      - name: Set up Python
-        uses: actions/setup-python@v5    # fixed from v6
+          python-version: '3.12'
+      - uses: actions/cache@v4
         with:
-          python-version: "3.11"
-
-      # Step 4 — Install PlatformIO
-      - name: Install PlatformIO
-        run: pip install --upgrade platformio
-
-      # Step 5 — Build PROD firmware (optimized, no debug symbols)
-      - name: Build production firmware
-        run: pio run -d firmware -e prod    # fixed from dev → prod
-
-      # Step 6 — Generate SHA256 checksum
-      # This verifies the binary wasn't corrupted during download
-      - name: Generate checksum
+          path: ~/.platformio
+          key: pio-idf-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini', 'firmware/sdkconfig.defaults') }}
+      - run: pip install platformio==6.1.19
+      - name: Validate tag and run release tests
         run: |
-          cd firmware
-          shasum -a 256 .pio/build/dev/firmware.bin > firmware.sha256
-          echo "Checksum generated:"
-          cat firmware.sha256
-
-      # Step 7 — Upload as downloadable artifact on GitHub
-      - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: zcharmc-firmware-v${{ github.event.inputs.version }}
-          path: |
-            firmware/.pio/build/dev/firmware.bin
-            firmware/firmware.sha256
-          retention-days: 90    # keep artifact for 90 days
+          python - <<'PY'
+          import os, re
+          version = os.environ['GITHUB_REF_NAME'].removeprefix('firmware-v')
+          assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?', version) and len(version) <= 31, 'Invalid firmware version tag'
+          PY
+          python -m unittest discover -s firmware/tests_host -v
+      - name: Build all role profiles from the tagged commit
+        run: |
+          export ZC_FW_VERSION="${GITHUB_REF_NAME#firmware-v}"
+          mkdir -p /tmp/firmware-input
+          for profile in inlet outlet control; do
+            pio run -d firmware -e "$profile"
+            cp "firmware/.pio/build/$profile/firmware.bin" "/tmp/firmware-input/$profile.bin"
+          done
+      - name: Sign and verify immutable release package
+        env:
+          SIGNING_KEY: ${{ secrets.FIRMWARE_SIGNING_PRIVATE_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          key = os.environ.get('SIGNING_KEY', '')
+          if not key:
+              raise SystemExit('Configure FIRMWARE_SIGNING_PRIVATE_KEY in the protected firmware-release environment')
+          path = Path(os.environ['RUNNER_TEMP']) / 'firmware-signing.pem'
+          path.touch(mode=0o600)
+          path.write_text(key)
+          PY
+          python firmware/tools/release_package.py package \
+            --input /tmp/firmware-input --output /tmp/firmware-release \
+            --version "${GITHUB_REF_NAME#firmware-v}" --hardware wroom32-4mb-v1 \
+            --commit "$GITHUB_SHA" --key "$RUNNER_TEMP/firmware-signing.pem" \
+            --trusted-key firmware/keys/release-public.pem
+      - name: Publish versioned GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" /tmp/firmware-release/* \
+            --verify-tag --title "$GITHUB_REF_NAME" \
+            --notes 'Signed native ESP-IDF bench firmware for inlet, outlet and control. Control remains maintenance-only. Publishing does not approve installation; select targets through Django admin.'
+      - name: Remove ephemeral signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/firmware-signing.pem"

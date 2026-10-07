@@ -31,13 +31,14 @@ ESP32 buffering or industrial/cloud availability.
   endpoint, but a normal-browser download remains a separate manual check.
 - The existing development-only Lovable hydration attribute warning remains.
 
-## Three-hour soak — pending
+## Three-hour soak — cancelled at user request
 
 Active run: `SYNTHETIC-SOAK-2f63ef16f72b`, started at 2026-10-07 15:17:55 Asia/Manila.
 Requested duration: 10,800 active seconds, with inlet/outlet pairs every 15 seconds.
-The final result must not be reported as passed until the runner's final comparison
-and requested elapsed duration are complete. A follow-up is configured to collect
-that result. Keep the computer and Codex app awake for the local run and follow-up.
+The user cancelled the run before completion. The last recorded progress was
+4,457.73 seconds (about 74 minutes), 820 stored readings, 37 backend restarts and
+62 successful comparisons. This is partial evidence, not a passed three-hour test.
+The automatic follow-up and local test services were stopped.
 
 Local evidence directory: `/private/tmp/zcharmc-soak-20261007-v2/`:
 `report.json`, `operations.json`, `dashboard-fixture.json`, `backend.log` and
