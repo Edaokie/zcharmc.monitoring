@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────
 // useSocket — Real-time WebSocket hook
 // ─────────────────────────────────────────
-// Connects to the Flask backend via Socket.IO.
+// Connects directly to the Railway Django backend via Socket.IO.
 // Listens for 'co2_update' and 'valve_update' events.
 //
 // Usage:
@@ -10,8 +10,11 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { io, type Socket } from "socket.io-client";
 import { BACKEND_URL } from "@/lib/api";
+import { compareReadings, mergeReading } from "@/lib/readings";
 
 export interface SocketReading {
+  id?: number;
+  message_id?: string | null;
   node_id: string;
   co2: number;
   temperature: number;
@@ -127,21 +130,22 @@ export function useSocket(): UseSocketReturn {
     };
 
     // Update latest per node
-    setLatestByNode((prev) => ({ ...prev, [normNodeId]: normalizedData }));
+    setLatestByNode((prev) => {
+      const current = prev[normNodeId];
+      // Buffered uploads and reconnect snapshots may arrive after newer readings.
+      if (current && compareReadings(normalizedData, current) <= 0) return prev;
+      return { ...prev, [normNodeId]: normalizedData };
+    });
 
     // Append to global rolling buffer
-    setRecentReadings((prev) => {
-      const next = [...prev, normalizedData];
-      return next.length > MAX_BUFFER * 3 ? next.slice(-MAX_BUFFER * 3) : next;
-    });
+    setRecentReadings((prev) => mergeReading(prev, normalizedData, MAX_BUFFER * 3));
 
     // Append to per-node rolling buffer
     setRecentByNode((prev) => {
       const nodeArr = prev[normNodeId] || [];
-      const next = [...nodeArr, normalizedData];
       return {
         ...prev,
-        [normNodeId]: next.length > MAX_BUFFER ? next.slice(-MAX_BUFFER) : next,
+        [normNodeId]: mergeReading(nodeArr, normalizedData, MAX_BUFFER),
       };
     });
   }, []);

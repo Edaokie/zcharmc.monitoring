@@ -61,6 +61,30 @@ class MonitoringTests(TestCase):
                 self.assertEqual(self.ingest(payload).status_code, 400)
         self.assertFalse(Reading.objects.exists())
 
+    def test_conflicting_retry_does_not_acknowledge_changed_data(self):
+        payload = {"node_id": "inlet", "message_id": "boot-a:1", "co2": 450,
+                   "timestamp": "2026-10-07T04:00:00Z"}
+        self.assertEqual(self.ingest(payload).status_code, 201)
+        self.assertEqual(self.ingest({**payload, "co2": 900}).status_code, 409)
+        self.assertEqual(self.ingest({**payload, "timestamp": "2026-10-07T04:01:00Z"}).status_code, 409)
+        self.assertEqual(self.ingest(payload).status_code, 200)
+        self.assertEqual(Reading.objects.get().co2, 450)
+        # Message IDs are scoped to a node, so the other node can use the same ID.
+        self.assertEqual(self.ingest({**payload, "node_id": "outlet"}).status_code, 201)
+
+    def test_offline_backlog_is_stored_without_replacing_latest(self):
+        current = {"node_id": "inlet", "message_id": "boot-a:2", "co2": 800,
+                   "timestamp": "2026-10-07T04:01:00Z"}
+        older = {**current, "message_id": "boot-a:1", "co2": 450,
+                 "timestamp": "2026-10-07T04:00:00Z"}
+        self.assertEqual(self.ingest(current).status_code, 201)
+        self.assertEqual(self.ingest(older).status_code, 201)
+        self.assertEqual(self.client.get("/api/latest").json()[0]["co2"], 800)
+        self.assertEqual([row["co2"] for row in self.client.get("/api/history/inlet").json()], [800, 450])
+        response = self.client.get("/api/export/csv?node_id=inlet")
+        rows = list(csv.DictReader(io.StringIO(b"".join(response.streaming_content).decode())))
+        self.assertEqual(len(rows), 2)
+
     def test_missing_values_stay_null(self):
         self.assertEqual(self.ingest({"node_id": "inlet", "co2": 400}).status_code, 201)
         self.assertIsNone(Reading.objects.get().ph)

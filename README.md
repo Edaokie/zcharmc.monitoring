@@ -14,6 +14,10 @@ and currently targets a private MQTT broker; cloud deployment alone does not con
 physical devices. Free hosting plans are for development here and do not provide
 an industrial 24/7 availability guarantee.
 
+The selected architecture is **ESP32 → Railway Django → PostgreSQL**, with the
+**Vercel dashboard → Railway** for reads and live updates. Devices upload only to
+Railway. See the [direct device cloud setup and upload contract](docs/CLOUD_SETUP.md).
+
 GitHub Actions validates every push and pull request. Vercel and Railway deploy via
 their native Git integrations after the one-time account setup described in the guide.
 No database credentials or hosting tokens belong in Git.

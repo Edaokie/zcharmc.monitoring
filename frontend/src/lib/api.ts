@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────
 // API Service Layer — all backend communication
 // ─────────────────────────────────────────
-// The Flask backend runs on port 5001.
+// Django runs on Railway in production and port 5001 locally.
 // All REST calls go through this file so components stay clean.
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5001";

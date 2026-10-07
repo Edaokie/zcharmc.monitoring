@@ -4,7 +4,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 # Railway service variables override these non-secret image defaults.
 # Remove public reads when real dashboard authentication is implemented.
 ENV ALLOW_PUBLIC_READ=true \
-    CORS_ALLOWED_ORIGINS=https://zcharmc-monitoring.vercel.app
+    CORS_ALLOWED_ORIGINS=https://zcharmc-monitoring.vercel.app \
+    DJANGO_SECURE_SSL_REDIRECT=true
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

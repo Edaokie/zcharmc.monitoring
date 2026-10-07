@@ -39,8 +39,15 @@ GitHub Actions runs these checks against PostgreSQL 16 and builds the Docker ima
 ## Railway setup (one-time account settings)
 
 1. Connect `Edaokie/zcharmc.monitoring` through Railway's GitHub integration.
-2. Set the application's **Root Directory** to `/backend` and **Config File Path**
-   to `/backend/railway.json`. Leave Watch Paths empty to rebuild every pushed
+2. Set the application's **Root Directory** to `/backend`. Existing services already
+   using Config as Code can retain `/backend/railway.json` for now. Railway has
+   [deprecated that format](https://docs.railway.com/config-as-code), with a hard
+   cutoff of 2026-12-01; new services must use dashboard settings or its current IaC.
+   In dashboard settings use Dockerfile `Dockerfile`, pre-deploy command
+   `python manage.py migrate --noinput`, start command
+   `gunicorn config.wsgi:application --config gunicorn.conf.py`, healthcheck
+   `/api/health` with 120 seconds, one replica, and On Failure restart policy.
+   Disable App Sleeping. Leave Watch Paths empty to rebuild every pushed
    commit on the selected deployment branch. The current checkout uses `develop`;
    select the same branch in Railway and Vercel for production if that is your
    intended release branch. A local commit that has not been pushed does not deploy.
@@ -55,8 +62,8 @@ GitHub Actions runs these checks against PostgreSQL 16 and builds the Docker ima
    | `DJANGO_SECURE_SSL_REDIRECT` | `true` (Railway terminates HTTPS and forwards the protocol) |
    | `DJANGO_SECURE_HSTS_SECONDS` | `3600` after confirming HTTPS works |
    | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
-   | `CORS_ALLOWED_ORIGINS` | `https://zcharmc-monitoring-u2m5-murex.vercel.app` |
-   | `CSRF_TRUSTED_ORIGINS` | `https://zcharmc-monitoring-u2m5-murex.vercel.app` |
+   | `CORS_ALLOWED_ORIGINS` | `https://zcharmc-monitoring.vercel.app` |
+   | `CSRF_TRUSTED_ORIGINS` | `https://zcharmc-monitoring.vercel.app` |
    | `INGEST_API_KEY` | Different randomly generated secret; never a Vercel `VITE_*` variable |
    | `ALLOW_PUBLIC_READ` | `true` only for the existing demo frontend; see authentication below |
 
@@ -142,7 +149,8 @@ tokens should be embedded in public frontend code.
 ```
 
 Use unique message IDs per node across reboots. Repeated IDs return the existing
-record and do not broadcast twice. Without an ID, each request creates a reading.
+record and do not broadcast twice. Reusing an ID with conflicting supplied values
+returns HTTP 409; the original record is preserved. Without an ID, each request creates a reading.
 Acknowledgment occurs after database commit. Missing measurements stay null rather
 than being fabricated as zero. Timestamps use UTC; absent timestamps use server
 receipt time. Device uptime is not a valid absolute measurement time.
@@ -161,6 +169,10 @@ shows success without acknowledgments; those displays are not physical confirmat
 Its alert resolution labels and settings save behavior also remain frontend work.
 
 ## Existing MQTT firmware
+
+The chosen next architecture uses direct HTTPS uploads to Railway, with no Pi or
+MQTT bridge in the deployment. Follow the [cloud upload contract](../docs/CLOUD_SETUP.md)
+when firmware work is authorized. The optional bridge below is only for legacy testing.
 
 Unchanged firmware publishes to a private LAN MQTT broker. Railway cannot reach
 that address. The cloud API will run, but physical readings will not arrive simply

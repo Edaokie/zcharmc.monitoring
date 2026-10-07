@@ -51,6 +51,10 @@ jobs:
         working-directory: frontend
         run: bun run tsc --noEmit --project tsconfig.json
 
+      - name: Verify delayed uploads and reconnect replay
+        working-directory: frontend
+        run: bun run test
+
       - name: 🏗️ Build — production bundle
         working-directory: frontend
         run: bun run build
