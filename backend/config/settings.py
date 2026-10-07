@@ -89,9 +89,15 @@ STORAGES = {
 
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
-SOCKET_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS
 # Temporary compatibility with the existing frontend's mock login. Off by default.
 ALLOW_PUBLIC_READ = os.getenv("ALLOW_PUBLIC_READ", "false").lower() == "true"
+# During the approved public demo, retain the production dashboard origin even
+# when an older Railway variable overrides the image's CORS default.
+if ALLOW_PUBLIC_READ:
+    production_origin = "https://zcharmc-monitoring.vercel.app"
+    if production_origin not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append(production_origin)
+SOCKET_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS
 INGEST_API_KEY = os.getenv("INGEST_API_KEY", "")
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

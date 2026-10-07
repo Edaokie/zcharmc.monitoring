@@ -13,7 +13,9 @@ Push these changes to the GitHub branch connected to both production services.
 `backend/Dockerfile` supplies `ALLOW_PUBLIC_READ=true` and the production
 `CORS_ALLOWED_ORIGINS` as non-secret image defaults. Railway's explicitly set
 service variables override Docker defaults: an existing `ALLOW_PUBLIC_READ=false`
-or a different `CORS_ALLOWED_ORIGINS` must be corrected by the hosting owner.
+must be corrected by the hosting owner. While public reads are enabled, Django
+always includes `https://zcharmc-monitoring.vercel.app` in both REST and Socket.IO
+allowed origins, retaining any additional origins from service variables.
 The Django settings used outside the container still default to private reads.
 
 After both deployments finish, `/api/latest` should return HTTP 200, and the
