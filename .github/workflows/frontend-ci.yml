@@ -1,22 +1,13 @@
-# GitHub Actions CI workflow for the React frontend.
-# Runs on every push/PR to develop that touches the frontend/ folder.
-# Steps: checkout → Bun setup → cache → install → lint → type check → build → upload artifact
+# Compile and validate every pushed commit. Hosting uses native Git integration.
 
 name: Frontend CI
 
 on:
   push:
-    branches:
-      - develop
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-ci.yml"
   pull_request:
-    branches:
-      - develop
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-ci.yml"
+
+permissions:
+  contents: read
 
 jobs:
   lint-typecheck-build:
@@ -25,6 +16,7 @@ jobs:
 
     env:
       VITE_BACKEND_URL: "http://localhost:5001"
+      NITRO_PRESET: vercel
 
     steps:
       - name: 📥 Checkout repository
@@ -33,7 +25,11 @@ jobs:
       - name: 🥟 Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.3.14"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
 
       - name: 💾 Cache Bun modules
         uses: actions/cache@v4
@@ -64,7 +60,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build-${{ github.sha }}
-          path: frontend/.output
+          path: frontend/.vercel/output
           retention-days: 14
           if-no-files-found: warn
 
@@ -73,7 +69,7 @@ jobs:
         working-directory: frontend
         run: |
           echo "=== Build output size ==="
-          du -sh .output 2>/dev/null || echo "(.output folder not found)"
+          du -sh .vercel/output
           echo ""
           echo "=== Top-level files ==="
-          ls -lh .output/ 2>/dev/null || true
+          ls -lh .vercel/output/

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "bun install --frozen-lockfile",
+  "buildCommand": "bun run build",
+  "ignoreCommand": "exit 1",
+  "git": {"deploymentEnabled": true},
+  "github": {"autoJobCancelation": false},
+  "build": {"env": {"NITRO_PRESET": "vercel"}}
+}

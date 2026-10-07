@@ -24,14 +24,14 @@ export interface ValveState {
 // ─────────────────────────────────────────
 
 export const THRESHOLDS = {
-  co2Warn:      3000,
-  co2Danger:    5000,
-  phMin:        5.5,
-  phMax:        8.5,
-  levelMin:     10,
-  pressureMax:  150,   // psi — upper limit
-  pressureWarn: 130,   // psi — warn level
-  offlineMs:    60_000,
+  co2Warn: 3000,
+  co2Danger: 5000,
+  phMin: 5.5,
+  phMax: 8.5,
+  levelMin: 10,
+  pressureMax: 150, // psi — upper limit
+  pressureWarn: 130, // psi — warn level
+  offlineMs: 60_000,
 };
 
 // ─────────────────────────────────────────
@@ -40,6 +40,6 @@ export const THRESHOLDS = {
 
 export function co2Status(v: number): "normal" | "warning" | "danger" {
   if (v >= THRESHOLDS.co2Danger) return "danger";
-  if (v >= THRESHOLDS.co2Warn)   return "warning";
+  if (v >= THRESHOLDS.co2Warn) return "warning";
   return "normal";
 }
