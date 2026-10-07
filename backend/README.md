@@ -163,10 +163,10 @@ fields are now stored and included in statistics. History uses timestamps, not
 independent table IDs. `/api/history/solenoid_valves` returns an empty list, so the
 existing dashboard's combined historical request does not fail.
 
-Actuation is intentionally unavailable: the backend returns a Socket.IO error for
-valve/vacuum commands. The existing frontend optimistically changes controls and
-shows success without acknowledgments; those displays are not physical confirmation.
-Its alert resolution labels and settings save behavior also remain frontend work.
+Actuation is unavailable: the backend rejects valve/vacuum commands and the
+frontend shows read-only equipment cards. Reported state comes from telemetry.
+Alerts describe recorded threshold breaches; acknowledgement and resolution are
+not tracked. See [dashboard data accuracy](#dashboard-data-accuracy) for details.
 
 ## Existing MQTT firmware
 
@@ -231,8 +231,10 @@ on reconnect cannot make old telemetry appear current. Efficiency requires valid
 inlet/outlet CO₂ readings under 60 seconds old and no more than 10 seconds apart.
 Zero remains a real measurement; missing values stay null.
 
-Deploy Railway before Vercel for this update: the new dashboard needs `/api/series`.
-No database migrations, firmware changes, or mock-login changes are required.
+Deploy Railway before a frontend version that requires `/api/series`. That chart
+endpoint needs no schema change, but the current operational diagnostics require
+migration `0002_ingestionstatus`, described below. Firmware and mock login remain
+unchanged.
 
 ## Telemetry validation and operations
 
@@ -288,3 +290,6 @@ visible only through stale upload age and sender retry logs.
 `/api/health` remains public, reports current database connectivity and returns 503
 on failure. This adds diagnostics, not an external uptime monitor or notification
 service. See `tools/README.md` for the isolated fault simulation.
+
+For release checks, diagnostics and recovery practices, see the
+[maintenance guide](../docs/MAINTENANCE.md).

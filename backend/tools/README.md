@@ -38,9 +38,9 @@ In the Vercel project serving **https://zcharmc-monitoring.vercel.app**, set the
 VITE_BACKEND_URL=https://zcharmcmonitoring-production.up.railway.app
 ```
 
-Redeploy Vercel: Vite embeds this value at build time. The production API bundle
-at `zcharmc-monitoring.vercel.app` inspected on 2026-10-07 still contained
-`http://localhost:5001`.
+Redeploy Vercel after changing this value: Vite embeds it at build time. Verify
+the deployed dashboard uses the intended Railway URL; local files alone do not
+establish which configuration is running in production.
 
 ## Run the test
 

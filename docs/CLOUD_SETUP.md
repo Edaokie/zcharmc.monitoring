@@ -84,7 +84,10 @@ Authorization: Bearer <private INGEST_API_KEY>
 Sensor node IDs are `inlet` and `outlet`. Available measurements are `co2`,
 `temperature`, `humidity`, `ph`, `pm25`, `flow_rate`, `level`, `weight`, `no2`,
 `so2`, `pressure1`, and `pressure2`. Omit unavailable measurements or send null;
-do not fabricate zeros. Use the units already defined for the dashboard.
+do not fabricate zeros. At least one finite, non-null measurement is required;
+unknown sensor fields are rejected. Timestamps must not exceed server UTC by more
+than 60 seconds. See the [sensor units and validity bounds](../backend/README.md#telemetry-validation-and-operations)
+for the canonical contract and hardware assumptions that still need confirmation.
 
 For reliable direct uploads, always supply a UTC measurement timestamp and a
 message ID unique per node across reboots. Keep both unchanged on retries.
