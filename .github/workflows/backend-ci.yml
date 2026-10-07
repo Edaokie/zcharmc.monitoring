@@ -46,6 +46,19 @@ jobs:
       - run: python manage.py migrate --noinput
       - run: python manage.py collectstatic --noinput
       - run: python manage.py test tests --verbosity 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install isolated simulator dependencies
+        run: pip install -r tools/requirements-simulation.txt
+      - name: Exercise telemetry faults against isolated PostgreSQL
+        run: python tools/simulate_telemetry.py --duration-seconds 30 --interval-seconds 1 --output /tmp/zcharmc-smoke
+      - name: Save telemetry simulation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telemetry-simulation
+          path: /tmp/zcharmc-smoke
       - name: Build Railway image
         run: docker build --tag zcharmc-backend:ci .
       - name: Smoke test production server

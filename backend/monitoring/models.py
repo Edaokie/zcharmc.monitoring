@@ -41,3 +41,18 @@ class ValveSnapshot(models.Model):
     node_id = models.CharField(max_length=32, unique=True, default="solenoid_valves")
     valves = models.JSONField(default=list)
     timestamp = models.DateTimeField(default=timezone.now)
+
+
+class IngestionStatus(models.Model):
+    """Bounded aggregate counters; no payloads, keys, IPs, or unbounded event log."""
+    node_id = models.CharField(max_length=32, unique=True)
+    accepted = models.PositiveBigIntegerField(default=0)
+    duplicates = models.PositiveBigIntegerField(default=0)
+    conflicts = models.PositiveBigIntegerField(default=0)
+    invalid = models.PositiveBigIntegerField(default=0)
+    unauthorized = models.PositiveBigIntegerField(default=0)
+    server_errors = models.PositiveBigIntegerField(default=0)
+    last_received_at = models.DateTimeField(null=True, blank=True)
+    last_accepted_at = models.DateTimeField(null=True, blank=True)
+    last_failure_at = models.DateTimeField(null=True, blank=True)
+    last_outcome = models.CharField(max_length=32, blank=True)

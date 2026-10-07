@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import serializers
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 
 from .models import MEASUREMENT_FIELDS, NODE_IDS, Reading
@@ -252,3 +252,34 @@ def ingest(request):
         raise serializers.ValidationError("Expected a JSON object.")
     event, created = save_payload(request.data)
     return Response({"data": event, "created": created}, status=201 if created else 200)
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def operations(request):
+    """Staff-only diagnostics, regardless of the public dashboard read setting."""
+    from .contract import MAX_FUTURE_SECONDS, SENSOR_CONTRACT
+    from .models import IngestionStatus
+    from .operations import NODES
+    now = timezone.now()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        counters = {row["node_id"]: row for row in IngestionStatus.objects.values()}
+        results = []
+        for node in NODES:
+            row = counters.get(node, {
+                **{field.name: field.get_default() for field in IngestionStatus._meta.fields if field.name not in ("id", "node_id")},
+                "node_id": node,
+            })
+            row.pop("id", None)
+            received = row.get("last_received_at")
+            latest = Reading.objects.filter(node_id=node).first() if node in NODE_IDS else None
+            age = (now - received).total_seconds() if received else None
+            results.append({**row, "upload_age_seconds": age,
+                            "upload_status": "never_seen" if age is None else "recent" if age < 60 else "stale",
+                            "latest_measurement_at": latest.timestamp if latest else None})
+        return Response({"database": "ok", "server_time": now, "nodes": results,
+                         "max_future_seconds": MAX_FUTURE_SECONDS, "sensor_contract": SENSOR_CONTRACT})
+    except Exception:
+        return Response({"database": "unavailable", "server_time": now}, status=503)

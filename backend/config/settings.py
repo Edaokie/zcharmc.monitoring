@@ -100,6 +100,7 @@ if ALLOW_PUBLIC_READ:
 SOCKET_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS
 INGEST_API_KEY = os.getenv("INGEST_API_KEY", "")
 REST_FRAMEWORK = {
+    "EXCEPTION_HANDLER": "monitoring.operations.exception_handler",
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",

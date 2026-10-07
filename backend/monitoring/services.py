@@ -3,6 +3,7 @@ from django.utils import timezone
 from rest_framework.exceptions import APIException
 
 from .models import Reading, ValveSnapshot
+from .operations import record_outcome
 from .serializers import ReadingSerializer, SensorPayloadSerializer, ValvePayloadSerializer
 
 
@@ -23,6 +24,7 @@ def save_payload(payload):
             ValveSnapshot.objects.update_or_create(
                 node_id=data["node_id"], defaults={"valves": data["valves"], "timestamp": timestamp},
             )
+            record_outcome(data["node_id"], "accepted")
             event = {**data, "timestamp": timestamp.isoformat()}
             transaction.on_commit(lambda: broadcast("valve_update", event))
         return event, True
@@ -40,6 +42,7 @@ def save_payload(payload):
                 raise MessageConflict()
         else:
             reading, created = Reading.objects.create(**data), True
+        record_outcome(data["node_id"], "accepted" if created else "duplicates")
         event = dict(ReadingSerializer(reading).data)
         if created:
             transaction.on_commit(lambda: broadcast("co2_update", event))

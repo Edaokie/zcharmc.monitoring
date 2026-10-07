@@ -233,3 +233,58 @@ Zero remains a real measurement; missing values stay null.
 
 Deploy Railway before Vercel for this update: the new dashboard needs `/api/series`.
 No database migrations, firmware changes, or mock-login changes are required.
+
+## Telemetry validation and operations
+
+Deploy migration `0002_ingestionstatus` before serving the updated backend. The
+existing Railway pre-deploy migration step handles it. No frontend, firmware or
+mock-login change is required.
+
+Sensor readings require at least one finite, non-null measurement. Zero remains
+valid where within bounds; omitted/null fields remain unknown. Unknown sensor
+payload fields are rejected to catch misspellings. Timestamps may be historical
+for queued uploads, but must not exceed server UTC by more than 60 seconds. A
+missing timestamp retains the legacy server-time behavior; future firmware should
+always send the original measurement time and stable message ID on every retry.
+These rules apply to new ingestion, not historical imports or existing rows.
+
+The canonical contract lives in `monitoring/contract.py`. Bounds are inclusive,
+broad API validity limits, **not safety limits, sensor specifications, or alarm
+thresholds**. Engineers must confirm the physical ranges/calibration before device
+integration. Values above an alarm threshold remain recordable within these bounds.
+
+| Field | Wire unit | Accepted range |
+| --- | --- | --- |
+| co2, no2, so2 | ppm | 0–1,000,000 |
+| temperature | °C | −273.15–1,000 |
+| humidity | %RH | 0–100 |
+| ph | pH | 0–14 |
+| pm25 | µg/m³ | 0–1,000,000 |
+| flow_rate | L/min | 0–1,000,000 |
+| level | % | 0–100 |
+| weight | grams (reserved; hardware confirmation required) | 0–1,000,000,000 |
+| pressure1, pressure2 | psi gauge (confirm hardware convention) | −14.7–10,000 |
+
+`GET /api/operations` requires a real authenticated **Django staff** user (session
+or Django token); public reads and the ingestion bearer key do not grant access.
+Use the existing Django admin **Ingestion statuses** page for the same counters.
+The endpoint returns live database health, server UTC, the sensor contract, and
+per-node accepted, duplicate, conflicting, invalid, unauthorized and server-error
+counts, last successful upload time, last newly accepted time, last failure time,
+and latest measurement time. An identical retry refreshes upload time but does not
+change the original reading/measurement time. `recent` means an upload within 60
+seconds, not verified device health; `stale` and `never_seen` are explicitly shown.
+
+Counters persist in PostgreSQL across process restarts and have at most four rows
+(inlet/outlet/solenoid_valves/unknown). HTTP rejection logs contain category, node
+and status only, with no payload or secret. Unauthorized/malformed/unknown-node
+requests use the `unknown` row to avoid spoofed node counts and unbounded growth.
+Successful writes and their counters commit together; failed writes are not
+acknowledged. Invalid/conflicting HTTP attempts increment failure counters after
+rollback. Database outages cannot be persisted in the failed database: their
+failure logs remain in Railway logs. Requests that never reach the backend are
+visible only through stale upload age and sender retry logs.
+
+`/api/health` remains public, reports current database connectivity and returns 503
+on failure. This adds diagnostics, not an external uptime monitor or notification
+service. See `tools/README.md` for the isolated fault simulation.

@@ -1,4 +1,9 @@
 import math
+from datetime import timedelta
+
+from django.utils import timezone
+
+from .contract import MAX_FUTURE_SECONDS, SENSOR_CONTRACT
 
 from rest_framework import serializers
 
@@ -28,9 +33,22 @@ class SensorPayloadSerializer(serializers.Serializer):
 
     def get_fields(self):
         fields = super().get_fields()
-        fields.update({name: FiniteFloatField(required=False, allow_null=True)
+        fields.update({name: FiniteFloatField(required=False, allow_null=True,
+                                               min_value=SENSOR_CONTRACT[name]["min"],
+                                               max_value=SENSOR_CONTRACT[name]["max"])
                        for name in MEASUREMENT_FIELDS})
         return fields
+
+
+    def validate(self, data):
+        unknown = set(self.initial_data) - set(self.fields)
+        if unknown:
+            raise serializers.ValidationError({name: "Unknown field." for name in sorted(unknown)})
+        if not any(data.get(field) is not None for field in MEASUREMENT_FIELDS):
+            raise serializers.ValidationError("At least one non-null measurement is required.")
+        if data.get("timestamp", timezone.now()) > timezone.now() + timedelta(seconds=MAX_FUTURE_SECONDS):
+            raise serializers.ValidationError({"timestamp": f"Must not exceed server time by more than {MAX_FUTURE_SECONDS} seconds."})
+        return data
 
 
 class ValveSerializer(serializers.Serializer):

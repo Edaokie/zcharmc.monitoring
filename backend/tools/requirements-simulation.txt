@@ -1,0 +1,5 @@
+# Local isolated simulation only; never installed in the Railway image.
+pgserver==0.1.4
+fasteners==0.20
+requests==2.34.2
+websocket-client==1.9.2

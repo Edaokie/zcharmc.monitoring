@@ -6,6 +6,7 @@ from . import views
 urlpatterns = [
     path("", views.index),
     path("api/health", views.health),
+    path("api/operations", views.operations),
     path("api/nodes", views.nodes),
     path("api/latest", views.latest),
     path("api/history", views.history),
