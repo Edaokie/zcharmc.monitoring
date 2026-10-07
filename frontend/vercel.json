@@ -5,5 +5,10 @@
   "ignoreCommand": "exit 1",
   "git": {"deploymentEnabled": true},
   "github": {"autoJobCancelation": false},
-  "build": {"env": {"NITRO_PRESET": "vercel"}}
+  "build": {
+    "env": {
+      "NITRO_PRESET": "vercel",
+      "VITE_BACKEND_URL": "https://zcharmcmonitoring-production.up.railway.app"
+    }
+  }
 }
