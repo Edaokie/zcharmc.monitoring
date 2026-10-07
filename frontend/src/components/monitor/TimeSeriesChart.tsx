@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { createElement, useCallback, useEffect, useId, useState } from "react";
 import type { SensorPoint } from "@/lib/mock-data";
 
 // ApexCharts touches window on import; load client-side only.
@@ -10,6 +10,7 @@ export interface Series {
 
 interface Props {
   series: Series[];
+  timeWindow?: { min: number; max: number };
   height?: number;
   yLabel?: string;
   thresholds?: { value: number; label: string }[];
@@ -19,6 +20,7 @@ interface Props {
 
 export function TimeSeriesChart({
   series,
+  timeWindow,
   height = 220,
   yLabel,
   thresholds,
@@ -30,7 +32,11 @@ export function TimeSeriesChart({
   const [Chart, setChart] = useState<any>(null);
   const [isBrowser, setIsBrowser] = useState(false);
   const chartId = useId();
-  const containerRef = useRef<HTMLDivElement>(null);
+  const formatValue = useCallback(
+    (value: number | null) =>
+      value == null ? "No data" : `${value.toFixed(1)}${yLabel ? ` ${yLabel}` : ""}`,
+    [yLabel],
+  );
 
   // Only render on client side — prevents SSR hydration errors
   useEffect(() => {
@@ -110,14 +116,17 @@ export function TimeSeriesChart({
     grid: { borderColor: "#e5e5e5", strokeDashArray: 3 },
     xaxis: {
       type: "datetime",
+      min: timeWindow?.min,
+      max: timeWindow?.max,
       labels: { style: { colors: "#737373", fontSize: "11px" } },
       axisBorder: { color: "#e5e5e5" },
       axisTicks: { color: "#e5e5e5" },
     },
     yaxis: {
-      title: yLabel
-        ? { text: yLabel, style: { color: "#737373", fontWeight: 400, fontSize: "11px" } }
-        : undefined,
+      title: {
+        text: yLabel ?? "",
+        style: { color: "#737373", fontWeight: 400, fontSize: "11px" },
+      },
       labels: { style: { colors: "#737373", fontSize: "11px" } },
     },
     legend: {
@@ -139,38 +148,35 @@ export function TimeSeriesChart({
       x: { format: "HH:mm:ss" },
       marker: { show: true },
       y: {
-        formatter: (val: number) => {
-          if (val == null) return "—";
-          return `${val.toFixed(1)}${yLabel ? ` ${yLabel}` : ""}`;
-        },
+        formatter: formatValue,
       },
     },
-    annotations: thresholds
-      ? {
-          yaxis: thresholds.map((th, i) => ({
-            y: th.value,
-            borderColor: THRESHOLD_COLORS[i % THRESHOLD_COLORS.length],
-            strokeDashArray: 4,
-            label: {
-              text: th.label,
-              position: "left",
-              style: {
-                color: "#ffffff",
-                background: THRESHOLD_COLORS[i % THRESHOLD_COLORS.length],
-                fontSize: "10px",
-                fontWeight: 600,
-                padding: { left: 6, right: 6, top: 2, bottom: 2 },
-              },
-            },
-          })),
-        }
-      : undefined,
+    annotations: {
+      yaxis: (thresholds ?? []).map((th, i) => ({
+        y: th.value,
+        borderColor: THRESHOLD_COLORS[i % THRESHOLD_COLORS.length],
+        strokeDashArray: 4,
+        label: {
+          text: th.label,
+          position: "left",
+          style: {
+            color: "#ffffff",
+            background: THRESHOLD_COLORS[i % THRESHOLD_COLORS.length],
+            fontSize: "10px",
+            fontWeight: 600,
+            padding: { left: 6, right: 6, top: 2, bottom: 2 },
+          },
+        },
+      })),
+    },
   };
 
   const apexSeries = series.map((s) => ({
     name: s.name,
-    data: s.data.map((p) => [p.t, Number(p.v.toFixed(2))]),
+    data: s.data.map((p) => [p.t, p.v == null ? null : Number(p.v.toFixed(2))]),
   }));
 
-  return <Chart options={options} series={apexSeries} type={type} height={height} />;
+  // The development component tagger injects a ref into JSX components. The chart
+  // wrapper spreads that ref over its own container ref, preventing chart mounting.
+  return createElement(Chart, { options, series: apexSeries, type, height });
 }

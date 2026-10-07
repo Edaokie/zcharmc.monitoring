@@ -11,6 +11,7 @@ urlpatterns = [
     path("api/history", views.history),
     path("api/history/<str:node_id>", views.history),
     path("api/readings", views.readings),
+    path("api/series", views.series),
     path("api/stats", views.stats),
     path("api/alerts", views.alerts),
     path("api/export/csv", views.export_csv),

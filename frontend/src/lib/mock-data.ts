@@ -1,3 +1,5 @@
+import { ALERT_THRESHOLDS } from "./alerts";
+
 // Shared types and threshold constants used by real monitoring components.
 // Fake data generators have been removed — all data comes from the backend API and WebSocket.
 
@@ -8,15 +10,15 @@
 /** A single time-series data point for charts */
 export interface SensorPoint {
   t: number; // epoch ms
-  v: number;
+  v: number | null;
 }
 
 /** Represents a valve or vacuum actuator state from the hardware */
 export interface ValveState {
   id: string;
   label: string;
-  open: boolean;
-  lastToggled: number;
+  open: boolean | null;
+  lastReported: number | null;
 }
 
 // ─────────────────────────────────────────
@@ -24,11 +26,7 @@ export interface ValveState {
 // ─────────────────────────────────────────
 
 export const THRESHOLDS = {
-  co2Warn: 3000,
-  co2Danger: 5000,
-  phMin: 5.5,
-  phMax: 8.5,
-  levelMin: 10,
+  ...ALERT_THRESHOLDS,
   pressureMax: 150, // psi — upper limit
   pressureWarn: 130, // psi — warn level
   offlineMs: 60_000,

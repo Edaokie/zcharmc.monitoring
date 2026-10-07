@@ -206,3 +206,30 @@ or the older combined table. Re-running it does not duplicate records. The timez
 must match the host that wrote the original naive timestamps. Use a secure local
 connection to PostgreSQL or a temporary mounted source file for a Railway import;
 the Docker image excludes `instance/` and does not ship the legacy database.
+
+## Dashboard data accuracy
+
+`GET /api/series?range=1m|1h|6h|24h` returns chart summaries for the complete
+selected window. It averages measurements in one-second buckets for `1m`,
+one-minute buckets through `24h`, and one-hour buckets for `7d`/`30d`.
+The response includes `node_id`, `timestamp`, `count`, and nullable measurement
+fields. Empty buckets explicitly return null, preserving gaps. It uses the same
+read permissions as other telemetry endpoints and requires a supported range.
+The legacy `/api/history` endpoint retains its 100-reading compatibility behavior.
+CSV exports and alert detection continue to use raw readings, not chart averages.
+
+Alerts now identify `sensor`, `sensor_label`, `value`, `unit`, and a stable
+`alert_id` per reading/sensor. A reading can produce multiple sensor breaches.
+`status: recorded` means a breach was observed; acknowledgement and resolution
+are not stored or inferred. The alert list covers the latest 100 matching readings
+and the browser exports the displayed filtered breaches, rather than all readings.
+
+The dashboard shows unknown actuator states until telemetry arrives and offers no
+remote controls. Freshness expires after 60 seconds, independently of the backend
+connection badge. Valve freshness uses the persisted snapshot timestamp, so replay
+on reconnect cannot make old telemetry appear current. Efficiency requires valid
+inlet/outlet CO₂ readings under 60 seconds old and no more than 10 seconds apart.
+Zero remains a real measurement; missing values stay null.
+
+Deploy Railway before Vercel for this update: the new dashboard needs `/api/series`.
+No database migrations, firmware changes, or mock-login changes are required.

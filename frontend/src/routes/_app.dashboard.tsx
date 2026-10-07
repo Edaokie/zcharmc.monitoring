@@ -15,8 +15,10 @@ import {
 } from "@/components/ui/accordion";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { co2Status, THRESHOLDS, type SensorPoint } from "@/lib/mock-data";
-import { fetchHistory, type Reading } from "@/lib/api";
-import { useSocket, type SocketReading } from "@/hooks/useSocket";
+import { fetchSeries, type SeriesReading } from "@/lib/api";
+import { useNow } from "@/hooks/useNow";
+import { adsorptionEfficiency, freshness, measurement, sensorPoints } from "@/lib/monitoring";
+import { useSocket } from "@/hooks/useSocket";
 
 import { toast } from "sonner";
 
@@ -24,180 +26,94 @@ export const Route = createFileRoute("/_app/dashboard")({
   component: DashboardPage,
 });
 
-// ─────────────────────────────────────────
-// Convert backend readings to chart-friendly SensorPoint[]
-// ─────────────────────────────────────────
-function toSensorPoints(readings: Reading[], field: keyof Reading): SensorPoint[] {
-  return readings
-    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: (r[field] as number) ?? 0 }))
-    .sort((a, b) => a.t - b.t);
+function hasMeasurements(...series: SensorPoint[][]) {
+  return series.some((points) => points.some((point) => point.v !== null));
 }
-
-function socketToSensorPoints(arr: SocketReading[], field: string): SensorPoint[] {
-  return arr.map((r) => ({
-    t: new Date(r.timestamp).getTime(),
-    v: (r[field as keyof SocketReading] as number) ?? 0,
-  }));
-}
-
-// ─────────────────────────────────────────
-// Node IDs from hardware
-// ─────────────────────────────────────────
-const NODES = ["inlet", "outlet", "solenoid_valves"] as const;
 
 function DashboardPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [range, setRange] = useState<TimeRange>("realtime");
-
-  // Real-time data from WebSocket
-  const { connected, latestByNode, recentByNode, valves, actuateValve, vacuums, actuateVacuum } =
-    useSocket();
-
-  // Historical data for non-realtime views
-  const [historyData, setHistoryData] = useState<Record<string, Reading[]>>({});
+  const now = useNow();
+  const { connected, latestByNode, recentByNode, valves, valveTimestamp, vacuums } = useSocket();
+  const [historyData, setHistoryData] = useState<Record<string, SeriesReading[]>>({});
+  const [historyWindow, setHistoryWindow] = useState<{ min: number; max: number }>();
   const [loading, setLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
 
-  // Fetch historical data when range changes away from realtime
   useEffect(() => {
-    if (range === "realtime") return;
-
+    if (range === "realtime") {
+      setLoading(false);
+      setHistoryWindow(undefined);
+      return;
+    }
+    const controller = new AbortController();
+    const end = Date.now();
+    const duration = { "1m": 60_000, "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000 }[range];
+    setHistoryWindow({ min: end - duration, max: end });
+    setHistoryData({});
+    setHistoryError(false);
     setLoading(true);
-    Promise.all(NODES.map((nodeId) => fetchHistory(nodeId).then((data) => ({ nodeId, data }))))
-      .then((results) => {
-        const map: Record<string, Reading[]> = {};
-        results.forEach((r) => {
-          map[r.nodeId] = r.data;
-        });
-        setHistoryData(map);
+    fetchSeries(range, controller.signal)
+      .then((rows) => {
+        if (controller.signal.aborted) return;
+        const grouped: Record<string, SeriesReading[]> = {};
+        for (const row of rows) (grouped[row.node_id] ??= []).push(row);
+        setHistoryData(grouped);
       })
-      .catch((err) => {
-        console.error("[Dashboard] Failed to fetch history:", err);
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setHistoryError(true);
         toast.error("Failed to load historical data");
       })
-      .finally(() => setLoading(false));
-  }, [range]);
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [range, historyRefresh]);
 
-  // ─────────────────────────────────────────
-  // Unified Data Resolvers (Real-time vs History)
-  // ─────────────────────────────────────────
-
-  const co2Series = useMemo(() => {
-    if (range === "realtime") {
-      return {
-        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "co2"),
-        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "co2"),
-      };
-    }
+  const series = useMemo(() => {
+    const source = range === "realtime" ? recentByNode : historyData;
+    const pair = (field: Parameters<typeof sensorPoints>[1]) => ({
+      inlet: sensorPoints(source.inlet || [], field),
+      outlet: sensorPoints(source.outlet || [], field),
+    });
     return {
-      inlet: toSensorPoints(historyData["inlet"] || [], "co2"),
-      outlet: toSensorPoints(historyData["outlet"] || [], "co2"),
+      co2: pair("co2"),
+      ph: pair("ph"),
+      temperature: pair("temperature"),
+      humidity: pair("humidity"),
+      pm25: pair("pm25"),
+      flow: pair("flow_rate"),
+      pressure: {
+        ps01: sensorPoints(source.inlet || [], "pressure1"),
+        ps02: sensorPoints(source.outlet || [], "pressure2"),
+      },
     };
   }, [range, recentByNode, historyData]);
+  const {
+    co2: co2Series,
+    ph: phSeries,
+    temperature: tempSeries,
+    humidity: humiditySeries,
+    pm25: pm25Series,
+    flow: flowSeries,
+    pressure: pressureSeries,
+  } = series;
 
-  const phSeries = useMemo(() => {
-    if (range === "realtime") {
-      return {
-        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "ph"),
-        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "ph"),
-      };
-    }
-    return {
-      inlet: toSensorPoints(historyData["inlet"] || [], "ph"),
-      outlet: toSensorPoints(historyData["outlet"] || [], "ph"),
-    };
-  }, [range, recentByNode, historyData]);
-
-  const tempSeries = useMemo(() => {
-    if (range === "realtime") {
-      return {
-        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "temperature"),
-        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "temperature"),
-      };
-    }
-    return {
-      inlet: toSensorPoints(historyData["inlet"] || [], "temperature"),
-      outlet: toSensorPoints(historyData["outlet"] || [], "temperature"),
-    };
-  }, [range, recentByNode, historyData]);
-
-  const humiditySeries = useMemo(() => {
-    if (range === "realtime") {
-      return {
-        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "humidity"),
-        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "humidity"),
-      };
-    }
-    return {
-      inlet: toSensorPoints(historyData["inlet"] || [], "humidity"),
-      outlet: toSensorPoints(historyData["outlet"] || [], "humidity"),
-    };
-  }, [range, recentByNode, historyData]);
-
-  const pm25Series = useMemo(() => {
-    if (range === "realtime") {
-      return {
-        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "pm25"),
-        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "pm25"),
-      };
-    }
-    return {
-      inlet: toSensorPoints(historyData["inlet"] || [], "pm25"),
-      outlet: toSensorPoints(historyData["outlet"] || [], "pm25"),
-    };
-  }, [range, recentByNode, historyData]);
-
-  const flowSeries = useMemo(() => {
-    if (range === "realtime") {
-      return {
-        inlet: socketToSensorPoints(recentByNode["inlet"] || [], "flow_rate"),
-        outlet: socketToSensorPoints(recentByNode["outlet"] || [], "flow_rate"),
-      };
-    }
-    return {
-      inlet: toSensorPoints(historyData["inlet"] || [], "flow_rate"),
-      outlet: toSensorPoints(historyData["outlet"] || [], "flow_rate"),
-    };
-  }, [range, recentByNode, historyData]);
-
-  // Pressure sensors — node_id = "inlet" for PS-01 (left tank), "outlet" for PS-02 (right tank)
-  const pressureSeries = useMemo(() => {
-    if (range === "realtime") {
-      return {
-        ps01: socketToSensorPoints(recentByNode["inlet"] || [], "pressure1"),
-        ps02: socketToSensorPoints(recentByNode["outlet"] || [], "pressure2"),
-      };
-    }
-    return {
-      ps01: toSensorPoints(historyData["inlet"] || [], "pressure1"),
-      ps02: toSensorPoints(historyData["outlet"] || [], "pressure2"),
-    };
-  }, [range, recentByNode, historyData]);
-
-  // Latest values for stat cards
-  const co2In = useMemo(() => latestByNode["inlet"]?.co2 ?? 0, [latestByNode]);
-  const co2Out = useMemo(() => latestByNode["outlet"]?.co2 ?? 0, [latestByNode]);
-  const ps01 = useMemo(() => latestByNode["inlet"]?.pressure1 ?? 0, [latestByNode]);
-  const ps02 = useMemo(() => latestByNode["outlet"]?.pressure2 ?? 0, [latestByNode]);
-
-  const efficiency = co2In > 0 ? ((co2In - co2Out) / co2In) * 100 : 0;
-
-  // Health times
-  const healthTimes = useMemo(() => {
-    return {
-      inlet: latestByNode["inlet"] ? new Date(latestByNode["inlet"].timestamp).getTime() : 0,
-      outlet: latestByNode["outlet"] ? new Date(latestByNode["outlet"].timestamp).getTime() : 0,
-      solenoid_valves: latestByNode["solenoid_valves"]
-        ? new Date(latestByNode["solenoid_valves"].timestamp).getTime()
-        : 0,
-    };
-  }, [latestByNode]);
-
-  const nodesOnline = useMemo(() => {
-    return Object.values(healthTimes).every((t) => t > 0 && Date.now() - t < THRESHOLDS.offlineMs);
-  }, [healthTimes]);
-
-  const hasData = co2Series.inlet.length > 0 || co2Series.outlet.length > 0;
+  const co2In = measurement(latestByNode.inlet?.co2);
+  const co2Out = measurement(latestByNode.outlet?.co2);
+  const ps01 = measurement(latestByNode.inlet?.pressure1);
+  const ps02 = measurement(latestByNode.outlet?.pressure2);
+  const efficiency = adsorptionEfficiency(latestByNode.inlet, latestByNode.outlet, now);
+  const healthTimes = {
+    inlet: latestByNode.inlet ? Date.parse(latestByNode.inlet.timestamp) : null,
+    outlet: latestByNode.outlet ? Date.parse(latestByNode.outlet.timestamp) : null,
+    solenoid_valves: valveTimestamp,
+  };
+  const nodesFresh = Object.values(healthTimes).every((time) => freshness(time, now) === "Fresh");
+  const hasData = hasMeasurements(co2Series.inlet, co2Series.outlet);
 
   // Pressure status helper
   function pressureStatus(v: number): "normal" | "warning" | "danger" {
@@ -212,7 +128,7 @@ function DashboardPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Live dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {isAdmin ? "Admin view — actuation enabled." : "Read-only monitoring view."}
+            Read-only monitoring · Equipment control unavailable.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -227,12 +143,12 @@ function DashboardPage() {
             {connected ? (
               <>
                 <Wifi className="h-3 w-3 animate-pulse" />
-                <span>Live</span>
+                <span>Backend connected</span>
               </>
             ) : (
               <>
                 <WifiOff className="h-3 w-3" />
-                <span>Offline</span>
+                <span>Backend disconnected</span>
               </>
             )}
           </div>
@@ -260,30 +176,50 @@ function DashboardPage() {
         </div>
       )}
 
+      {historyError && range !== "realtime" && (
+        <div role="alert" className="text-sm text-destructive">
+          Historical data could not be loaded.{" "}
+          <button className="underline" onClick={() => setHistoryRefresh((value) => value + 1)}>
+            Retry
+          </button>
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">
+        Summary values are the latest measurements. Historical charts show period averages; gaps
+        mean no measurement.
+      </p>
       {/* ── Stat row ── */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Adsorption efficiency"
-          value={hasData ? efficiency.toFixed(1) : "—"}
-          unit={hasData ? "%" : ""}
+          value={efficiency == null ? "No data" : efficiency.toFixed(1)}
+          unit={efficiency == null ? "" : "%"}
+          hint={
+            efficiency == null
+              ? "Needs CO₂ samples under 60 seconds old and within 10 seconds of each other"
+              : "From recent paired CO₂ measurements"
+          }
         />
         <StatCard
           label="CO₂ inlet"
-          value={co2In > 0 ? co2In.toFixed(0) : "—"}
-          unit={co2In > 0 ? "ppm" : ""}
-          status={co2In > 0 ? co2Status(co2In) : undefined}
+          hint={co2In == null ? "Measurement unavailable" : freshness(healthTimes.inlet, now)}
+          value={co2In == null ? "No data" : co2In.toFixed(0)}
+          unit={co2In == null ? "" : "ppm"}
+          status={co2In != null ? co2Status(co2In) : undefined}
         />
         <StatCard
           label="PS-01 (Left Tank)"
-          value={ps01 > 0 ? ps01.toFixed(1) : "—"}
-          unit={ps01 > 0 ? "psi" : ""}
-          status={ps01 > 0 ? pressureStatus(ps01) : undefined}
+          hint={ps01 == null ? "Measurement unavailable" : freshness(healthTimes.inlet, now)}
+          value={ps01 == null ? "No data" : ps01.toFixed(1)}
+          unit={ps01 == null ? "" : "psi"}
+          status={ps01 != null ? pressureStatus(ps01) : undefined}
         />
         <StatCard
           label="PS-02 (Right Tank)"
-          value={ps02 > 0 ? ps02.toFixed(1) : "—"}
-          unit={ps02 > 0 ? "psi" : ""}
-          status={ps02 > 0 ? pressureStatus(ps02) : undefined}
+          hint={ps02 == null ? "Measurement unavailable" : freshness(healthTimes.outlet, now)}
+          value={ps02 == null ? "No data" : ps02.toFixed(1)}
+          unit={ps02 == null ? "" : "psi"}
+          status={ps02 != null ? pressureStatus(ps02) : undefined}
         />
       </section>
 
@@ -291,37 +227,36 @@ function DashboardPage() {
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="CO₂ outlet"
-          value={co2Out > 0 ? co2Out.toFixed(0) : "—"}
-          unit={co2Out > 0 ? "ppm" : ""}
-          status={co2Out > 0 ? co2Status(co2Out) : undefined}
+          hint={co2Out == null ? "Measurement unavailable" : freshness(healthTimes.outlet, now)}
+          value={co2Out == null ? "No data" : co2Out.toFixed(0)}
+          unit={co2Out == null ? "" : "ppm"}
+          status={co2Out != null ? co2Status(co2Out) : undefined}
         />
         <StatCard
           label="System status"
-          value={!connected ? "Offline" : nodesOnline ? "Online" : "Degraded"}
+          value={!connected ? "Disconnected" : nodesFresh ? "Fresh" : "Incomplete / stale"}
           hint={
             !connected
               ? "Backend disconnected"
-              : nodesOnline
-                ? "All nodes reporting"
-                : "One or more nodes offline"
+              : nodesFresh
+                ? "All node measurements are recent"
+                : "One or more nodes have stale or missing telemetry"
           }
         />
       </section>
 
       {/* ── Sensor health ── */}
       <section className="flex items-center gap-6 border border-border rounded-sm p-4 bg-card/30">
-        <SensorHealthDot label="Inlet Node" lastSeen={healthTimes.inlet || Date.now()} />
-        <SensorHealthDot label="Outlet Node" lastSeen={healthTimes.outlet || Date.now()} />
-        <SensorHealthDot
-          label="Solenoid Valves"
-          lastSeen={healthTimes.solenoid_valves || Date.now()}
-        />
+        <SensorHealthDot label="Inlet Node" lastSeen={healthTimes.inlet} now={now} />
+        <SensorHealthDot label="Outlet Node" lastSeen={healthTimes.outlet} now={now} />
+        <SensorHealthDot label="Solenoid Valves" lastSeen={healthTimes.solenoid_valves} now={now} />
       </section>
 
       {/* ── Hero CO₂ chart ── */}
       <Panel title="CO₂ inlet vs outlet" subtitle="Solid = Inlet · Dashed = Outlet">
         {hasData ? (
           <TimeSeriesChart
+            timeWindow={historyWindow}
             height={320}
             yLabel="ppm"
             series={[
@@ -343,8 +278,9 @@ function DashboardPage() {
         title="Pressure Sensor 01 & 02"
         subtitle="PS-01 Left Tank (solid) · PS-02 Right Tank (dashed) · Max 150 psi"
       >
-        {pressureSeries.ps01.length > 0 || pressureSeries.ps02.length > 0 ? (
+        {hasMeasurements(pressureSeries.ps01, pressureSeries.ps02) ? (
           <TimeSeriesChart
+            timeWindow={historyWindow}
             height={280}
             yLabel="psi"
             series={[
@@ -364,8 +300,9 @@ function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* pH */}
         <Panel title="pH Level" subtitle="Neutral threshold = 7.0">
-          {hasData ? (
+          {hasMeasurements(phSeries.inlet, phSeries.outlet) ? (
             <TimeSeriesChart
+              timeWindow={historyWindow}
               yLabel="pH"
               series={[
                 { name: "Inlet pH", data: phSeries.inlet },
@@ -380,8 +317,9 @@ function DashboardPage() {
 
         {/* Temperature & Humidity */}
         <Panel title="Temperature & humidity" subtitle="Temp solid · Humidity dashed">
-          {hasData ? (
+          {hasMeasurements(tempSeries.inlet, humiditySeries.inlet) ? (
             <TimeSeriesChart
+              timeWindow={historyWindow}
               series={[
                 { name: "Inlet Temp (°C)", data: tempSeries.inlet },
                 { name: "Inlet Humidity (%)", data: humiditySeries.inlet, dashed: true },
@@ -394,8 +332,9 @@ function DashboardPage() {
 
         {/* PM2.5 */}
         <Panel title="PM2.5 Level" subtitle="Inlet vs Outlet">
-          {hasData ? (
+          {hasMeasurements(pm25Series.inlet, pm25Series.outlet) ? (
             <TimeSeriesChart
+              timeWindow={historyWindow}
               type="area"
               yLabel="µg/m³"
               series={[
@@ -410,8 +349,9 @@ function DashboardPage() {
 
         {/* Flow rate */}
         <Panel title="Flow rate" subtitle="Inlet vs Outlet">
-          {hasData ? (
+          {hasMeasurements(flowSeries.inlet, flowSeries.outlet) ? (
             <TimeSeriesChart
+              timeWindow={historyWindow}
               type="area"
               yLabel="L/min"
               series={[
@@ -426,43 +366,19 @@ function DashboardPage() {
       </div>
 
       {/* ── Solenoid Valves SV1–SV6 ── */}
-      <Panel
-        title="Solenoid Valves · SV1–SV6"
-        subtitle={isAdmin ? "Click a valve to actuate (confirm required)" : "Read-only"}
-      >
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-          {valves.map((v) => (
-            <ValveStatusCard
-              key={v.id}
-              valve={v}
-              isAdmin={isAdmin}
-              onToggle={(id) => {
-                if (!isAdmin) return;
-                actuateValve(id, !v.open);
-                toast.success(`Sent toggle request for ${v.label}`);
-              }}
-            />
+      <Panel title="Solenoid Valves · SV1–SV6" subtitle="Telemetry only · Control unavailable">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {valves.map((valve) => (
+            <ValveStatusCard key={valve.id} valve={valve} />
           ))}
         </div>
       </Panel>
 
       {/* ── Vacuum Actuators ── */}
-      <Panel
-        title="Vacuum Actuators · Vacuum 1–3"
-        subtitle={isAdmin ? "Click to toggle vacuum pump (confirm required)" : "Read-only"}
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {vacuums.map((v) => (
-            <ValveStatusCard
-              key={v.id}
-              valve={v}
-              isAdmin={isAdmin}
-              onToggle={(id) => {
-                if (!isAdmin) return;
-                actuateVacuum(id, !v.open);
-                toast.success(`Sent toggle request for ${v.label}`);
-              }}
-            />
+      <Panel title="Vacuum Actuators · Vacuum 1–3" subtitle="Telemetry only · Control unavailable">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {vacuums.map((valve) => (
+            <ValveStatusCard key={valve.id} valve={valve} />
           ))}
         </div>
       </Panel>

@@ -1,3 +1,5 @@
+import type { MeasurementField } from "./monitoring";
+
 // ─────────────────────────────────────────
 // API Service Layer — all backend communication
 // ─────────────────────────────────────────
@@ -12,25 +14,18 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5001";
 export interface Reading {
   id: number;
   node_id: string;
-  co2: number;
-  temperature: number;
-  humidity: number;
-  no2: number;
-  so2: number;
-  ph: number;
-  pm25: number;
-  flow_rate: number;
-  level: number;
-  /** Pressure Sensor 01 — left tank (psi) */
-  pressure1: number;
-  /** Pressure Sensor 02 — right tank (psi) */
-  pressure2: number;
-  /** Vacuum pump 1 — bottom / main inlet (on=true) */
-  vacuum1: boolean;
-  /** Vacuum pump 2 — top-left / left column (on=true) */
-  vacuum2: boolean;
-  /** Vacuum pump 3 — top-right / right column (on=true) */
-  vacuum3: boolean;
+  co2: number | null;
+  temperature: number | null;
+  humidity: number | null;
+  no2: number | null;
+  so2: number | null;
+  ph: number | null;
+  pm25: number | null;
+  flow_rate: number | null;
+  level: number | null;
+  weight: number | null;
+  pressure1: number | null;
+  pressure2: number | null;
   timestamp: string;
 }
 
@@ -66,9 +61,12 @@ export interface Stats {
 export interface AlertReading extends Reading {
   alert_type: "warning" | "danger";
   threshold: string;
+  sensor?: "co2" | "ph" | "level";
+  value?: number;
+  alert_id?: string;
 }
 
-export type DateRange = "10min" | "30min" | "1h" | "6h" | "12h" | "24h" | "7d" | "30d";
+export type DateRange = "1m" | "10min" | "30min" | "1h" | "6h" | "12h" | "24h" | "7d" | "30d";
 
 export interface ReadingsFilter {
   node_id?: string;
@@ -118,6 +116,20 @@ export async function fetchLatest(): Promise<Reading[]> {
 export async function fetchHistory(nodeId?: string): Promise<Reading[]> {
   const path = nodeId ? `/api/history/${nodeId}` : "/api/history";
   return apiFetch(path);
+}
+
+/** Chart averages over the complete range (seconds, minutes, or hours). */
+export type SeriesReading = Pick<Reading, MeasurementField | "node_id" | "timestamp"> & {
+  count: number;
+};
+
+export async function fetchSeries(
+  range: DateRange,
+  signal?: AbortSignal,
+): Promise<SeriesReading[]> {
+  const response = await fetch(`${BACKEND_URL}/api/series?range=${range}`, { signal });
+  if (!response.ok) throw new Error(`History API error ${response.status}`);
+  return response.json();
 }
 
 /** Get filtered, paginated readings */

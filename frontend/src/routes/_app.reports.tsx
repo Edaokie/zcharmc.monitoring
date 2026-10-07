@@ -142,32 +142,32 @@ function ReportsPage() {
 
   const co2ChartInlet = readings
     .filter((r) => r.node_id === "inlet")
-    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.co2 ?? 0 }))
+    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.co2 ?? null }))
     .sort((a, b) => a.t - b.t);
 
   const co2ChartOutlet = readings
     .filter((r) => r.node_id === "outlet")
-    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.co2 ?? 0 }))
+    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.co2 ?? null }))
     .sort((a, b) => a.t - b.t);
 
   const ps01Chart = readings
     .filter((r) => r.node_id === "inlet")
-    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.pressure1 ?? 0 }))
+    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.pressure1 ?? null }))
     .sort((a, b) => a.t - b.t);
 
   const ps02Chart = readings
     .filter((r) => r.node_id === "outlet")
-    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.pressure2 ?? 0 }))
+    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.pressure2 ?? null }))
     .sort((a, b) => a.t - b.t);
 
   const tempChart = readings
     .filter((r) => r.node_id === "inlet")
-    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.temperature ?? 0 }))
+    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.temperature ?? null }))
     .sort((a, b) => a.t - b.t);
 
   const humidityChart = readings
     .filter((r) => r.node_id === "inlet")
-    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.humidity ?? 0 }))
+    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.humidity ?? null }))
     .sort((a, b) => a.t - b.t);
 
   const hasChartData = co2ChartInlet.length > 0 || co2ChartOutlet.length > 0;

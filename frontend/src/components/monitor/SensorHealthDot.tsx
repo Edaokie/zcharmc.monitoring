@@ -1,10 +1,19 @@
 import { formatDistanceToNow } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { THRESHOLDS } from "@/lib/mock-data";
+import { freshness } from "@/lib/monitoring";
 import { cn } from "@/lib/utils";
 
-export function SensorHealthDot({ label, lastSeen }: { label: string; lastSeen: number }) {
-  const healthy = Date.now() - lastSeen < THRESHOLDS.offlineMs;
+export function SensorHealthDot({
+  label,
+  lastSeen,
+  now,
+}: {
+  label: string;
+  lastSeen: number | null;
+  now: number;
+}) {
+  const status = freshness(lastSeen, now, THRESHOLDS.offlineMs);
   return (
     <TooltipProvider>
       <Tooltip>
@@ -13,14 +22,18 @@ export function SensorHealthDot({ label, lastSeen }: { label: string; lastSeen: 
             <span
               className={cn(
                 "h-2.5 w-2.5 rounded-full border border-foreground",
-                healthy ? "bg-foreground" : "bg-transparent",
+                status === "Fresh" ? "bg-foreground" : "bg-transparent",
               )}
             />
-            <span className="text-sm">{label}</span>
+            <span className="text-sm">
+              {label} · {status}
+            </span>
           </div>
         </TooltipTrigger>
         <TooltipContent>
-          Last seen {formatDistanceToNow(lastSeen, { addSuffix: true })}
+          {lastSeen == null
+            ? "No telemetry received"
+            : `Last measurement ${formatDistanceToNow(lastSeen, { addSuffix: true })}`}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

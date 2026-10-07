@@ -137,7 +137,8 @@ class MonitoringTests(TestCase):
         Reading.objects.create(node_id="outlet", co2=400, ph=0)
         alerts = self.client.get("/api/alerts?node_id=outlet").json()
         self.assertEqual(len(alerts), 1)
-        self.assertIn("pH 0", alerts[0]["threshold"])
+        self.assertEqual(alerts[0]["sensor"], "ph")
+        self.assertEqual(alerts[0]["value"], 0)
         self.assertEqual(self.client.get("/api/alerts?node_id=inlet").json()[0]["alert_type"], "danger")
 
     @override_settings(ALLOW_PUBLIC_READ=False)
@@ -200,3 +201,48 @@ class MonitoringTests(TestCase):
             self.assertEqual(path.read_bytes(), original)
             self.assertEqual(Reading.objects.count(), 1)
             self.assertEqual(Reading.objects.get().timestamp.hour, 4)
+
+
+    def test_chart_series_covers_window_without_last_100_truncation(self):
+        now = timezone.now().replace(second=30, microsecond=0)
+        Reading.objects.bulk_create([
+            Reading(node_id="inlet", co2=i, timestamp=now - timedelta(seconds=i * 20))
+            for i in range(151)
+        ])
+        Reading.objects.create(node_id="inlet", co2=99999, timestamp=now - timedelta(hours=2))
+        Reading.objects.create(node_id="inlet", co2=99999, timestamp=now + timedelta(minutes=1))
+        with patch("monitoring.views.timezone.now", return_value=now):
+            rows = self.client.get("/api/series?node_id=inlet&range=1h").json()
+        self.assertEqual(len(rows), 61)
+        self.assertEqual(sum(row["count"] for row in rows), 151)
+        self.assertTrue(any(row["count"] == 0 and row["co2"] is None for row in rows))
+        self.assertTrue(all(row["ph"] is None for row in rows))
+        self.assertEqual(rows[0]["timestamp"], (now - timedelta(hours=1)).isoformat())
+        self.assertLess(max(row["co2"] for row in rows if row["co2"] is not None), 151)
+
+    def test_chart_series_averages_and_range_validation(self):
+        now = timezone.now().replace(second=30, microsecond=0)
+        Reading.objects.create(node_id="inlet", co2=100, pressure1=0, timestamp=now.replace(second=1))
+        Reading.objects.create(node_id="inlet", co2=300, timestamp=now.replace(second=20))
+        with patch("monitoring.views.timezone.now", return_value=now):
+            minute = self.client.get("/api/series?node_id=inlet&range=1h").json()[-1]
+            seconds = self.client.get("/api/series?node_id=inlet&range=1m").json()
+            day = self.client.get("/api/series?node_id=inlet&range=24h").json()
+        self.assertEqual(minute["co2"], 200)
+        self.assertEqual(minute["pressure1"], 0)
+        self.assertEqual(minute["count"], 2)
+        self.assertEqual(len(seconds), 61)
+        self.assertEqual(len(day), 1441)
+        for query in ("", "?range=wrong", "?range=1h&node_id=missing"):
+            self.assertIn(self.client.get("/api/series" + query).status_code, (400, 404))
+        with override_settings(ALLOW_PUBLIC_READ=False):
+            self.assertEqual(self.client.get("/api/series?range=1h").status_code, 401)
+
+    def test_alerts_preserve_all_sensor_breaches_without_fake_resolution(self):
+        Reading.objects.create(node_id="inlet", co2=6000, ph=0, level=0)
+        rows = self.client.get("/api/alerts").json()
+        self.assertEqual([row["sensor"] for row in rows], ["co2", "ph", "level"])
+        self.assertEqual([row["unit"] for row in rows], ["ppm", "", "%"])
+        self.assertEqual([row["value"] for row in rows], [6000, 0, 0])
+        self.assertTrue(all(row["status"] == "recorded" for row in rows))
+        self.assertEqual(len({row["alert_id"] for row in rows}), 3)

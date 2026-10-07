@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from django.db import connection
 from django.db.models import Avg, Count, Max, Min, Q
+from django.db.models.functions import TruncHour, TruncMinute, TruncSecond
 from django.http import StreamingHttpResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -18,13 +19,13 @@ from .serializers import ReadingSerializer
 from .services import save_payload
 
 RANGES = {
-    "10min": timedelta(minutes=10), "30min": timedelta(minutes=30),
+    "1m": timedelta(minutes=1), "10min": timedelta(minutes=10), "30min": timedelta(minutes=30),
     "1h": timedelta(hours=1), "6h": timedelta(hours=6), "12h": timedelta(hours=12),
     "24h": timedelta(days=1), "7d": timedelta(days=7), "30d": timedelta(days=30),
 }
 
 
-def filtered_readings(request):
+def filtered_readings(request, now=None):
     query = Reading.objects.all()
     node_id = request.query_params.get("node_id")
     if node_id == "solenoid_valves":
@@ -38,7 +39,7 @@ def filtered_readings(request):
     if period:
         if period not in RANGES:
             raise serializers.ValidationError({"range": "Unknown date range."})
-        now = timezone.now()
+        now = now or timezone.now()
         return query.filter(timestamp__gte=now - RANGES[period], timestamp__lte=now)
     dates = {}
     for name in ("start", "end"):
@@ -114,6 +115,44 @@ def history(request, node_id=None):
 
 
 @api_view(["GET"])
+def series(request):
+    """Bound chart responses while covering the complete selected time window."""
+    period = request.query_params.get("range")
+    if period not in RANGES:
+        raise serializers.ValidationError({"range": "A supported date range is required."})
+    now = timezone.now()
+    cutoff = now - RANGES[period]
+    truncate = TruncSecond if period == "1m" else TruncHour if period in ("7d", "30d") else TruncMinute
+    interval = timedelta(seconds=1) if truncate == TruncSecond else timedelta(hours=1) if truncate == TruncHour else timedelta(minutes=1)
+    query = filtered_readings(request, now=now).order_by().annotate(bucket=truncate("timestamp"))
+    rows = query.values("node_id", "bucket").annotate(
+        count=Count("id"), **{field: Avg(field) for field in MEASUREMENT_FIELDS},
+    )
+    buckets = {(row["node_id"], row["bucket"]): row for row in rows}
+    node_id = request.query_params.get("node_id")
+    nodes = [node_id] if node_id else NODE_IDS
+    if node_id == "solenoid_valves":
+        return Response([])
+    bucket = cutoff.replace(microsecond=0)
+    if truncate != TruncSecond:
+        bucket = bucket.replace(second=0)
+    if truncate == TruncHour:
+        bucket = bucket.replace(minute=0)
+    results = []
+    while bucket <= now:
+        for node in nodes:
+            row = buckets.get((node, bucket))
+            # Explicit empty buckets break the line through telemetry outages.
+            results.append({
+                "node_id": node, "timestamp": max(bucket, cutoff).isoformat(),
+                "count": row["count"] if row else 0,
+                **{field: row[field] if row else None for field in MEASUREMENT_FIELDS},
+            })
+        bucket += interval
+    return Response(results)
+
+
+@api_view(["GET"])
 def readings(request):
     page = integer_param(request, "page", 1)
     per_page = integer_param(request, "per_page", 50, 500)
@@ -164,16 +203,22 @@ def alerts(request):
     results = []
     for row in query:
         data = dict(ReadingSerializer(row).data)
-        if row.co2 is not None and row.co2 >= t["co2_danger"]:
-            severity, reason = "danger", f'CO2 >= {t["co2_danger"]:g} ppm'
-        elif row.co2 is not None and row.co2 >= t["co2_warn"]:
-            severity, reason = "warning", f'CO2 >= {t["co2_warn"]:g} ppm'
-        elif row.ph is not None and not t["ph_min"] <= row.ph <= t["ph_max"]:
-            severity, reason = "warning", f"pH {row.ph:g} out of bounds"
-        else:
-            severity, reason = "warning", f"Level {row.level:g}% out of bounds"
-        data.update(alert_type=severity, threshold=reason)
-        results.append(data)
+        breaches = []
+        if row.co2 is not None and row.co2 >= t["co2_warn"]:
+            danger = row.co2 >= t["co2_danger"]
+            limit = t["co2_danger"] if danger else t["co2_warn"]
+            breaches.append(("co2", "CO₂", row.co2, "ppm", "danger" if danger else "warning",
+                             f"CO2 >= {limit:g} ppm"))
+        if row.ph is not None and not t["ph_min"] <= row.ph <= t["ph_max"]:
+            breaches.append(("ph", "pH", row.ph, "", "warning",
+                             f'pH outside {t["ph_min"]:g}–{t["ph_max"]:g}'))
+        if row.level is not None and not t["level_min"] <= row.level <= t["level_max"]:
+            breaches.append(("level", "Level", row.level, "%", "warning",
+                             f'Level outside {t["level_min"]:g}–{t["level_max"]:g}%'))
+        for sensor, label, value, unit, severity, reason in breaches:
+            results.append({**data, "alert_id": f"{row.id}:{sensor}", "sensor": sensor,
+                            "sensor_label": label, "value": value, "unit": unit,
+                            "alert_type": severity, "threshold": reason, "status": "recorded"})
     return Response(results)
 
 
