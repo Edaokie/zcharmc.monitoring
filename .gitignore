@@ -44,3 +44,4 @@ firmware/release-output/
 firmware/sdkconfig.*
 !firmware/sdkconfig.defaults
 firmware/managed_components/
+firmware/include/secrets.h
