@@ -190,7 +190,7 @@ that image configures actuator output pins.
 
 The following management command must run in an authorized backend environment
 connected to the **same database used by the deployed backend**. A device created
-only in a local SQLite database will not be recognized by the cloud backend.
+only in a local development PostgreSQL database will not be recognized by the cloud backend.
 
 Ask the backend administrator to create a private directory and run, from `backend/`:
 

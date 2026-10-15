@@ -52,7 +52,9 @@ For first-time setup and a supervised bench test, start with the
 ## Run it locally
 
 Use Python 3.12 for the backend, PostgreSQL 16, Node.js 24 and Bun 1.3.14 for the
-frontend. Docker Compose can provide the local PostgreSQL database.
+frontend. PostgreSQL is the only supported database engine in development, tests and
+production. Docker Compose can provide the local PostgreSQL database; use separate
+databases for development, testing and production.
 
 1. Follow the [backend setup](backend/README.md#local-development) to create the
    local environment, migrate the database and start the API on port 5001.

@@ -84,7 +84,11 @@ class FleetTests(TestCase):
         operator.save()
         self.assertEqual(self.client.get('/api/firmware/devices').status_code, 401)
 
-    def test_csrf_mutations_logout_and_ticket_replay(self):
+    @patch('monitoring.realtime.close_old_connections')
+    def test_csrf_mutations_logout_and_ticket_replay(self, close_connections):
+        # Direct calls share TestCase's transaction, unlike real socket workers.
+        # Production cleanup would close that PostgreSQL connection because its
+        # autocommit state differs inside atomic().
         self.sign_in()
         self.assertEqual(self.client.post(self.url, {'expected_generation': 0, 'release_id': None}, format='json').status_code, 403)
         ticket = self.post('/api/auth/socket-ticket', {}).json()['ticket']
@@ -96,6 +100,7 @@ class FleetTests(TestCase):
         self.assertEqual(self.post('/api/auth/logout', {}).status_code, 200)
         with patch('monitoring.realtime.sio.emit'):
             self.assertFalse(connect('test', {}, {'ticket': ticket}))
+        self.assertEqual(close_connections.call_count, 6)
         self.assertEqual(self.client.get('/api/firmware/devices').status_code, 401)
 
     def test_approval_retry_withdraw_audit_and_stale_generation(self):

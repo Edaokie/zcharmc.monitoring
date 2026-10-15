@@ -25,8 +25,13 @@ Replace both example secrets. The API listens on port 5001; `/admin/` is Django
 administration. Use the Gunicorn entry point for Socket.IO. Django's `runserver`
 only serves HTTP APIs and admin, not the Socket.IO wrapper.
 
-To work without PostgreSQL locally, remove `DATABASE_URL` and explicitly set
-`ALLOW_SQLITE=true`. SQLite is never an automatic production fallback.
+PostgreSQL 16 is required in development, CI and production. `DATABASE_URL` must
+use `postgres://` or `postgresql://`; startup fails when it is missing or uses a
+different database engine. Use the local Compose service above, or a separate
+PostgreSQL instance. Development and test databases must be separate from Railway's
+production database. Django creates and destroys a temporary test database, so the
+local test user needs permission to create databases. Never run tests using the
+production connection URL.
 
 ```sh
 python manage.py check
@@ -191,20 +196,12 @@ The bridge has no durable outage queue and is not deployed automatically. It str
 the existing firmware's numeric uptime timestamp and uses receipt time. The current
 firmware still sends placeholder readings and has blocking reconnect behavior.
 
-## Import existing SQLite data
+## Historical database files
 
-The checked-in `instance/co2.db` is preserved as legacy data and is never used by
-the production server. Back it up, then run against the destination PostgreSQL DB:
-
-```sh
-python manage.py import_legacy instance/co2.db --timezone Asia/Manila
-```
-
-The importer reads the source in read-only mode and supports current per-node tables
-or the older combined table. Re-running it does not duplicate records. The timezone
-must match the host that wrote the original naive timestamps. Use a secure local
-connection to PostgreSQL or a temporary mounted source file for a Railway import;
-the Docker image excludes `instance/` and does not ship the legacy database.
+The retired local database import command has been removed. Existing legacy data
+files are not opened by the backend and remain excluded from the Docker image.
+Preserve any historical files as backups; removing engine support does not migrate
+or delete their contents.
 
 ## Dashboard data accuracy
 

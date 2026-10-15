@@ -1,5 +1,19 @@
 # OTA release foundation: local verification
 
+## PostgreSQL-only backend verification: 2026-10-15
+
+The current backend requires a PostgreSQL `DATABASE_URL` in every environment.
+The optional local engine fallback and legacy database import command are removed;
+existing data files are preserved. Earlier database results below are historical.
+
+All 52 current backend tests passed against an isolated PostgreSQL 16.2 instance,
+including missing/unsupported database URL rejection and the socket-test connection
+cleanup correction. Django system checks, migration consistency and fresh migrations
+passed. Static collection also succeeded with a build-only PostgreSQL URL pointing
+to an unavailable local port, confirming it needs no database connection during the
+image build. A full Docker image build and hosted CI rerun were not performed here.
+These changes have not been pushed or deployed.
+
 ## Wi-Fi recovery and offline queue: 2026-10-15
 
 The working tree adds a separate Wi-Fi recovery task, continuous offline simulated

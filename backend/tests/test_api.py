@@ -1,13 +1,9 @@
 import csv
 import io
-import sqlite3
-import tempfile
 from datetime import timedelta
-from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.core.management import call_command
 from django.db import OperationalError
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -186,22 +182,6 @@ class MonitoringTests(TestCase):
             connect("test", {}, None)
             self.assertEqual(emit.call_count, 2)
             self.assertFalse(unsupported_actuation("test", {})["ok"])
-
-    def test_legacy_import_is_repeatable_and_read_only(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "legacy.db"
-            source = sqlite3.connect(path)
-            source.execute("CREATE TABLE node_inlet (id INTEGER, node_id TEXT, co2 REAL, timestamp TEXT)")
-            source.execute("INSERT INTO node_inlet VALUES (1, 'inlet', 1000, '2026-01-01T12:00:00')")
-            source.commit()
-            source.close()
-            original = path.read_bytes()
-            for _ in range(2):
-                call_command("import_legacy", str(path), stdout=io.StringIO())
-            self.assertEqual(path.read_bytes(), original)
-            self.assertEqual(Reading.objects.count(), 1)
-            self.assertEqual(Reading.objects.get().timestamp.hour, 4)
-
 
     def test_chart_series_covers_window_without_last_100_truncation(self):
         now = timezone.now().replace(second=30, microsecond=0)

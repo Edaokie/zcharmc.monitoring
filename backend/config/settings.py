@@ -54,20 +54,13 @@ TEMPLATES = [{
 }]
 
 database_url = os.getenv("DATABASE_URL", "")
-if database_url:
-    if not database_url.startswith(("postgres://", "postgresql://")):
-        raise ImproperlyConfigured("DATABASE_URL must point to PostgreSQL.")
-    DATABASES = {"default": dj_database_url.parse(
-        database_url, conn_max_age=60, conn_health_checks=True,
-    )}
-elif os.getenv("ALLOW_SQLITE", "false").lower() == "true":
-    # Explicitly opt in for lightweight local development only.
-    DATABASES = {"default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "local.sqlite3",
-    }}
-else:
-    raise ImproperlyConfigured("Set DATABASE_URL (PostgreSQL), or ALLOW_SQLITE=true locally.")
+if not database_url:
+    raise ImproperlyConfigured("Set DATABASE_URL to a PostgreSQL connection URL.")
+if not database_url.startswith(("postgres://", "postgresql://")):
+    raise ImproperlyConfigured("DATABASE_URL must point to PostgreSQL.")
+DATABASES = {"default": dj_database_url.parse(
+    database_url, conn_max_age=60, conn_health_checks=True,
+)}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
