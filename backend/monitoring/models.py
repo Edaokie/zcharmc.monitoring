@@ -85,6 +85,7 @@ class Device(models.Model):
     hardware = models.CharField(max_length=64)
     credential_hash = models.CharField(max_length=64, editable=False)
     enabled = models.BooleanField(default=True)
+    allow_test_telemetry = models.BooleanField(default=False, help_text="Opt in to simulated firmware telemetry stored separately from research readings.")
     desired_release = models.ForeignKey(FirmwareRelease, null=True, blank=True, on_delete=models.PROTECT)
     approval_generation = models.PositiveBigIntegerField(default=0)
     reported_version = models.CharField(max_length=31, blank=True)
@@ -122,3 +123,15 @@ class DeviceReport(models.Model):
     class Meta:
         ordering = ['-created_at', '-pk']
         indexes = [models.Index(fields=['device', '-created_at'], name='device_report_time')]
+
+
+class DeviceTestReading(models.Model):
+    """Explicit simulated data: never enters Reading or live research charts."""
+    device = models.ForeignKey(Device, on_delete=models.PROTECT)
+    message_id = models.CharField(max_length=128)
+    payload = models.JSONField()
+    received_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['device', 'message_id'], name='unique_device_test_reading')]
+        ordering = ['-received_at', '-pk']

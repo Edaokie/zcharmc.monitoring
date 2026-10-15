@@ -13,7 +13,7 @@ recorded. Do not use this guide to connect unvalidated firmware to operating equ
 | CI | Tests and builds three role images on firmware pushes/PRs | Successful run for the exact commit you will release |
 | Delivery | Tag-triggered signing, GitHub publication, verified Django registration | Owner settings, deployed backend and a successful tagged run |
 | Device OTA | Authenticated polling, signed-image checks, inactive-slot install and boot rollback | Real-board update, rejection, interrupted-download and rollback tests |
-| Equipment functions | Maintenance-only control outputs | Sensor drivers, telemetry buffering/uploads, operating cycle and hardware interlocks |
+| Equipment functions | Maintenance-only control outputs; buffered simulated telemetry | Real sensor drivers, physical buffering/upload tests, operating cycle and hardware interlocks |
 
 The current build assumes a generic classic ESP32 with 4 MB flash and hardware ID
 `wroom32-4mb-v1`. The LilyGO T-SIM7000G board in the system diagram has not been
@@ -378,3 +378,6 @@ The [firmware dashboard guide](FIRMWARE_DASHBOARD.md) explains real Django login
 staff permissions, release enablement, selected device approval, withdrawal and
 explicit retries. Complete the signing, initial USB installation and bench checks
 in this guide first. The web page does not replace physical acceptance tests.
+
+For Wi-Fi recovery, the bounded flash queue, simulated upload opt-in and read-only
+USB data recovery, follow the [outage recovery guide](FIRMWARE_WIFI_RECOVERY.md).

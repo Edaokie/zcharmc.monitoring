@@ -38,34 +38,13 @@ static void control_task(void *arg) {
     }
 }
 
-static void wifi_event(void *arg, esp_event_base_t base, int32_t event, void *data) {
-    (void)arg; (void)data;
-    if (base==WIFI_EVENT && event==WIFI_EVENT_STA_DISCONNECTED) zc_network_ready=false;
-    if (base==IP_EVENT && event==IP_EVENT_STA_GOT_IP) zc_network_ready=true;
-}
-
 void zc_network_task(void *arg) {
     (void)arg;
-    // Cloud reachability is never a local-health prerequisite.
-    while (!zc_config.provisioned) vTaskDelay(pdMS_TO_TICKS(1000));
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
-    wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&init));
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT,ESP_EVENT_ANY_ID,wifi_event,NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT,IP_EVENT_STA_GOT_IP,wifi_event,NULL));
-    wifi_config_t config={0};
-    strcpy((char *)config.sta.ssid,zc_config.ssid);
-    strcpy((char *)config.sta.password,zc_config.password);
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA,&config));
-    ESP_ERROR_CHECK(esp_wifi_start());
-    esp_sntp_config_t clock=ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
-    ESP_ERROR_CHECK(esp_netif_sntp_init(&clock));
+    // Wi-Fi recovery and sampling run independently of blocking cloud/OTA calls.
     for (;;) {
-        if (!zc_network_ready) esp_wifi_connect();
-        else if (zc_boot_ready && time(NULL)>1735689600) { zc_report(); zc_ota_poll(); }
+        if (zc_config.provisioned && zc_network_ready && zc_boot_ready && zc_clock_ready && time(NULL)>1735689600) {
+            zc_report(); zc_ota_poll();
+        }
         vTaskDelay(pdMS_TO_TICKS(60000));
     }
 }
@@ -89,11 +68,12 @@ void app_main(void) {
     configASSERT(xTaskCreate(zc_serial_task,"provision",4096,NULL,2,NULL)==pdPASS);
     configASSERT(xTaskCreate(control_task,"local_health",3072,NULL,5,NULL)==pdPASS);
     configASSERT(xTaskCreate(zc_network_task,"cloud_ota",16384,NULL,2,NULL)==pdPASS);
+    zc_wifi_start();
     zc_telemetry_start();
     // Validate local task progress and maintenance outputs before accepting a pending image.
     vTaskDelay(pdMS_TO_TICKS(3000));
     bool healthy=zc_config.provisioned && health_ticks>10 && zc_control_health()
-        && esp_get_free_heap_size()>32768;
+        && zc_telemetry_healthy() && esp_get_free_heap_size()>32768;
     esp_ota_img_states_t state;
     if (esp_ota_get_state_partition(esp_ota_get_running_partition(),&state)==ESP_OK && state==ESP_OTA_IMG_PENDING_VERIFY) {
         if (!healthy) ESP_ERROR_CHECK(esp_ota_mark_app_invalid_rollback_and_reboot());

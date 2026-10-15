@@ -11,8 +11,8 @@ The browser downloads the dashboard from Vercel. HTTP uses its `/backend` proxy
 to Railway; Socket.IO connects directly with an authenticated short-lived ticket.
 Devices upload to Railway only. PostgreSQL has no device-facing or browser-facing
 credentials. No Raspberry Pi, local server, or MQTT broker is part of this target.
-The active native ESP-IDF firmware provides bench OTA; physical telemetry uploads
-remain pending. Deploying the cloud changes does not start physical device uploads.
+The active native ESP-IDF firmware provides bench OTA and opt-in buffered simulated
+uploads to a separate test table; real sensor telemetry remains pending. Deploying the cloud changes does not start physical device uploads.
 
 ## Existing hosting projects
 

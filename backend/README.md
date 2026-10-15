@@ -334,3 +334,14 @@ Target/retry requests for control devices also require `maintenance_confirmed: t
 and a maintenance report within three minutes. Stale generations return 409.
 Device identity, role, credentials and reported state cannot be edited through these
 routes. Device and CI registration keys do not authorize these staff operations.
+
+
+## Buffered simulated firmware readings
+
+Migration `0005_device_allow_test_telemetry_devicetestreading` adds a disabled-by-default
+**Allow test telemetry** device setting and a separate **Device test readings** table.
+`POST /api/devices/<device_id>/telemetry` requires that device's bearer credential,
+an explicit `source: simulated` envelope, a matching inlet/outlet role, an original
+UTC timestamp and a stable message ID. Identical retries acknowledge the same record;
+conflicting retries return 409. No fake values enter `Reading` or live research charts.
+See the [Wi-Fi/outage guide](../docs/FIRMWARE_WIFI_RECOVERY.md) for bench tests and USB recovery.

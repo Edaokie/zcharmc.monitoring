@@ -28,8 +28,10 @@ load the dashboard from Vercel and retrieve their data from Railway.
 
 **Physical telemetry integration is still pending.** The active firmware now uses
 native ESP-IDF/FreeRTOS with an approved signed OTA release foundation for three
-roles. These bench images provide provisioning and updates; native sensor drivers,
-telemetry buffering/uploads and the operating control cycle are still pending.
+roles. These bench images provide provisioning, updates, Wi-Fi recovery and buffered
+simulated telemetry. Native sensor drivers and the operating control cycle remain
+pending. Simulated uploads are explicitly enabled and stored separately from real
+measurements; see the [outage recovery guide](docs/FIRMWARE_WIFI_RECOVERY.md).
 See the [firmware guide](firmware/README.md) before flashing any board. Deploying
 the web applications does not update ESP32 devices automatically.
 The [firmware CI/CD guide](docs/FIRMWARE_CICD.md) explains automatic signed release
@@ -84,8 +86,9 @@ currently deployed.
 
 - **Authentication:** Django sessions protect the dashboard. Explicitly enabling
   `ALLOW_PUBLIC_READ=true` still makes telemetry and exports publicly readable.
-- **Device uploads:** direct HTTPS uploads and durable offline buffering still need
-  firmware work. During an internet outage, cloud services cannot receive site data.
+- **Device uploads:** buffered simulated uploads are available for bench tests.
+  Real sensors and their telemetry acceptance remain pending. Offline queue capacity
+  is bounded; cloud services receive stored readings only after connectivity returns.
 - **Equipment control:** remote valve and vacuum actuation is unavailable. Reported
   states are telemetry, not confirmation that a command was executed.
 - **Alerts:** threshold breaches are recorded; acknowledgement and resolution are

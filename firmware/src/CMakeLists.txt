@@ -1,9 +1,9 @@
 # Explicit sources: legacy Arduino files remain reference-only and are not built.
 idf_component_register(
-    SRCS "idf/main.c" "idf/config.c" "idf/ota.c" "idf/sensors.c" "idf/telemetry.c"
+    SRCS "idf/main.c" "idf/config.c" "idf/ota.c" "idf/sensors.c" "idf/telemetry.c" "idf/wifi.c" "idf/outbox.c"
     INCLUDE_DIRS "idf" "${CMAKE_CURRENT_BINARY_DIR}"
     REQUIRES esp_wifi esp_netif esp_event nvs_flash esp_http_client app_update
-             esp_timer esp_driver_gpio mbedtls espressif__cjson esp_system
+             esp_timer esp_partition esp_driver_gpio mbedtls espressif__cjson esp_system
 )
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)

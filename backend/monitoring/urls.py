@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework.authtoken.views import obtain_auth_token
 
-from . import views, ota, release_registration, browser_auth, fleet
+from . import views, ota, release_registration, browser_auth, fleet, device_telemetry
 
 urlpatterns = [
     path('api/auth/session', browser_auth.session),
@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/firmware/devices/<slug:device_id>/retry', fleet.set_target, {'retry': True}),
     path('api/firmware/devices/<slug:device_id>/history', fleet.history),
     path("api/firmware/releases/register", release_registration.register),
+    path("api/devices/<slug:device_id>/telemetry", device_telemetry.ingest),
     path("api/devices/<slug:device_id>/ota", ota.target),
     path("api/devices/<slug:device_id>/report", ota.report),
     path("", views.index),

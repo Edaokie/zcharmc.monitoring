@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.db import transaction
 
-from .models import Device, FirmwareApproval, FirmwareRelease, IngestionStatus, Reading, ValveSnapshot
+from .models import Device, DeviceTestReading, FirmwareApproval, FirmwareRelease, IngestionStatus, Reading, ValveSnapshot
 
 
 @admin.register(Reading)
@@ -65,7 +65,7 @@ class DeviceAdmin(admin.ModelAdmin):
             FirmwareApproval.objects.create(device=device, release=device.desired_release,
                 generation=device.approval_generation, approved_by=request.user)
 
-    list_display = ["device_id", "profile", "reported_version", "desired_release", "reported_status", "maintenance", "last_seen"]
+    list_display = ["device_id", "profile", "reported_version", "desired_release", "reported_status", "maintenance", "last_seen", "allow_test_telemetry"]
     readonly_fields = ["device_id", "profile", "hardware", "credential_hash", "approval_generation", "reported_version", "reported_status", "maintenance", "last_seen"]
 
     def has_add_permission(self, request):
@@ -80,7 +80,7 @@ class DeviceAdmin(admin.ModelAdmin):
             FirmwareApproval.objects.create(device=obj, release=obj.desired_release,
                 generation=obj.approval_generation, approved_by=request.user)
         # Do not overwrite a status report received while the admin form was open.
-        obj.save(update_fields=["desired_release", "enabled", "approval_generation"])
+        obj.save(update_fields=["desired_release", "enabled", "approval_generation", "allow_test_telemetry"])
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -90,6 +90,22 @@ class DeviceAdmin(admin.ModelAdmin):
 class FirmwareApprovalAdmin(admin.ModelAdmin):
     list_display = ["device", "release", "generation", "approved_by", "created_at"]
     readonly_fields = [f.name for f in FirmwareApproval._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(DeviceTestReading)
+class DeviceTestReadingAdmin(admin.ModelAdmin):
+    list_display = ['device', 'message_id', 'received_at']
+    list_filter = ['device']
+    readonly_fields = [f.name for f in DeviceTestReading._meta.fields]
 
     def has_add_permission(self, request):
         return False

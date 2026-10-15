@@ -1,5 +1,34 @@
 # OTA release foundation: local verification
 
+## Wi-Fi recovery and offline queue: 2026-10-15
+
+The working tree adds a separate Wi-Fi recovery task, continuous offline simulated
+acquisition, a checksummed raw-flash outbox, idempotent per-device test uploads and
+read-only USB export. See [operation and bench testing](FIRMWARE_WIFI_RECOVERY.md).
+No source changes were pushed, no service was deployed and no board was flashed
+in this addition. Login configuration was left unchanged.
+
+- All three native profiles built, with rollback enabled and images within the
+  existing 1,703,936-byte slots. No partition-table change is required.
+- 11 firmware host tests passed. The actual portable C outbox executed under
+  address/undefined-behavior sanitizers against a NOR-flash model. Tests covered
+  reboot persistence, duplicate delivery, capacity/reclaim, committed corruption,
+  retry delay limits and 780 interrupted append/acknowledgement/replacement/erase
+  boundaries. A C-produced dump was decoded and the recovery CLI's private-file
+  creation and refusal to overwrite were checked.
+- 50 backend tests passed against isolated SQLite. Migration consistency and Django
+  checks passed. Migration `0005_device_allow_test_telemetry_devicetestreading`
+  adds opt-in simulated telemetry and a separate test table.
+- A native C-generated flash sample was decoded and sent over actual HTTP to an
+  isolated local Gunicorn/Django server: disabled upload returned 403, opted-in
+  first upload returned 201, identical retry returned 200, and conflicting retry
+  returned 409. One test row and zero production Reading rows remained.
+
+This is software evidence, not physical radio, flash-wear, power-loss or TLS-memory
+acceptance. Queue capacity, unsynchronized cold-boot timestamps, full-queue losses,
+unknown-format rejection and recovery limits are documented in the outage guide.
+The earlier provisioning/OTA-attempt bookkeeping findings remain outside this change.
+
 ## Firmware dashboard verification: 2026-10-15
 
 The working tree now adds real Django browser sessions, a staff Firmware page,

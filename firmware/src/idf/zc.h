@@ -1,6 +1,7 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdatomic.h>
 #include "esp_err.h"
 #include "nvs.h"
 
@@ -23,7 +24,9 @@ extern zc_config_t zc_config;
 extern nvs_handle_t zc_nvs;
 extern volatile bool zc_maintenance;
 extern volatile bool zc_updating;
-extern volatile bool zc_network_ready;
+extern _Atomic bool zc_network_ready;
+extern _Atomic bool zc_clock_ready;
+void zc_wifi_start(void);
 extern const char *zc_status;
 extern volatile bool zc_boot_ready;
 bool zc_control_health(void);

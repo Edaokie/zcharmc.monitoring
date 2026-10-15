@@ -11,7 +11,8 @@ zc_config_t zc_config;
 nvs_handle_t zc_nvs;
 volatile bool zc_maintenance = true; // Control release is a maintenance-only bench image.
 volatile bool zc_updating = false;
-volatile bool zc_network_ready = false;
+_Atomic bool zc_network_ready = false;
+_Atomic bool zc_clock_ready = false;
 const char *zc_status = "not_provisioned";
 
 static void read_string(const char *key, char *dest, size_t capacity) {
