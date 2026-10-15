@@ -174,3 +174,97 @@ class OtaTests(TestCase):
         self.assertEqual(FirmwareApproval.objects.count(), 2)
         anonymous = APIClient()
         self.assertEqual(anonymous.post('/admin/monitoring/device/', {}).status_code, 302)
+
+    def registration_payload(self, **changes):
+        entries = []
+        for profile in ('inlet', 'outlet', 'control'):
+            data = dict(schema=1, version='1.2.3', profile=profile, hardware='wroom32-4mb-v1',
+                        commit='a'*40, image=profile+'.bin', size=100, sha256='b'*64)
+            data.update(changes)
+            raw = json.dumps(data, sort_keys=True, separators=(',', ':'))
+            signature = self.key.sign(raw.encode(), padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=32), hashes.SHA256())
+            entries.append(dict(manifest=raw, signature=base64.b64encode(signature).decode()))
+        return dict(base_url='https://github.com/example/repo/releases/download/firmware-v1.2.3', releases=entries)
+
+    @override_settings(OTA_RELEASE_REGISTRATION_KEY='ci-registration-only', OTA_RELEASE_REPOSITORY='example/repo')
+    def test_ci_registration_is_separately_authenticated_and_disabled_by_default(self):
+        url = '/api/firmware/releases/register'
+        payload = self.registration_payload()
+        # A valid device token and even an admin login cannot register CI packages.
+        self.assertEqual(self.client.post(url, payload, format='json').status_code, 403)
+        staff = get_user_model().objects.create_superuser('ci-admin', 'ci@example.com', 'test-password')
+        self.client.force_authenticate(staff)
+        self.assertEqual(self.client.post(url, payload, format='json').status_code, 403)
+        self.client.force_authenticate(None)
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer ci-registration-only')
+        with override_settings(OTA_RELEASE_REGISTRATION_KEY=''):
+            self.assertEqual(self.client.post(url, payload, format='json').status_code, 403)
+        response = self.client.post(url, payload, format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json(), dict(registered=3, created=3, device_assignments_changed=False))
+        self.assertEqual(response['Cache-Control'], 'no-store')
+        self.assertFalse(FirmwareRelease.objects.filter(enabled=True).exists())
+        self.assertFalse(Device.objects.filter(desired_release__isnull=False).exists())
+        self.assertFalse(FirmwareApproval.objects.exists())
+        # An idempotent retry must preserve manual enablement, approvals and signatures.
+        release = FirmwareRelease.objects.get(profile='inlet')
+        release.enabled = True
+        release.save()
+        self.assign(release)
+        original_signature = release.signature
+        retry = self.client.post(url, self.registration_payload(), format='json')
+        self.assertEqual(retry.status_code, 200)
+        self.assertEqual(retry.json()['created'], 0)
+        release.refresh_from_db()
+        self.device.refresh_from_db()
+        self.assertTrue(release.enabled)
+        self.assertEqual(release.signature, original_signature)
+        self.assertEqual(self.device.desired_release_id, release.pk)
+        self.assertEqual(self.device.approval_generation, 1)
+        # Registration credentials cannot fetch private device targets.
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+
+    @override_settings(OTA_RELEASE_REGISTRATION_KEY='ci-registration-only', OTA_RELEASE_REPOSITORY='example/repo')
+    def test_ci_registration_validates_whole_package_before_writing(self):
+        url = '/api/firmware/releases/register'
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer ci-registration-only')
+        bad_packages = []
+        tampered = self.registration_payload()
+        tampered['releases'][2]['signature'] = base64.b64encode(b'invalid').decode()
+        bad_packages.append(tampered)
+        wrong_repo = self.registration_payload()
+        wrong_repo['base_url'] = wrong_repo['base_url'].replace('example/repo', 'attacker/repo')
+        bad_packages.append(wrong_repo)
+        wrong_tag = self.registration_payload()
+        wrong_tag['base_url'] += '-other'
+        bad_packages.append(wrong_tag)
+        duplicate = self.registration_payload()
+        duplicate['releases'][2] = duplicate['releases'][0]
+        bad_packages.append(duplicate)
+        for field, value in [('commit', 'c'*40), ('hardware', 'other-board'), ('version', '1.2.4')]:
+            mixed = self.registration_payload()
+            mixed['releases'][2] = self.registration_payload(**{field: value})['releases'][2]
+            bad_packages.append(mixed)
+        enabled = self.registration_payload()
+        enabled['releases'][0]['enabled'] = True
+        bad_packages.append(enabled)
+        missing = self.registration_payload()
+        missing['releases'].pop()
+        bad_packages.append(missing)
+        for package in bad_packages:
+            with self.subTest(package=package):
+                self.assertEqual(self.client.post(url, package, format='json').status_code, 400)
+                self.assertEqual(FirmwareRelease.objects.count(), 0)
+        with override_settings(OTA_RELEASE_REPOSITORY=''):
+            self.assertEqual(self.client.post(url, self.registration_payload(), format='json').status_code, 400)
+
+    @override_settings(OTA_RELEASE_REGISTRATION_KEY='ci-registration-only', OTA_RELEASE_REPOSITORY='example/repo')
+    def test_ci_registration_conflict_rolls_back_and_preserves_existing_release(self):
+        existing = self.release('outlet')
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer ci-registration-only')
+        response = self.client.post('/api/firmware/releases/register', self.registration_payload(commit='c'*40), format='json')
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(FirmwareRelease.objects.count(), 1)
+        existing.refresh_from_db()
+        self.assertTrue(existing.enabled)
+        self.assertEqual(json.loads(existing.manifest)['commit'], 'a'*40)

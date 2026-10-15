@@ -128,3 +128,6 @@ LOGGING = {
 # Public trust anchor, not a private signing key. Must match initial USB provisioning.
 OTA_SIGNING_PUBLIC_KEY = os.getenv("OTA_SIGNING_PUBLIC_KEY", "").replace("\\n", "\n")
 OTA_ASSET_HOSTS = env_list("OTA_ASSET_HOSTS", "github.com,objects.githubusercontent.com,release-assets.githubusercontent.com")
+# Dedicated CI credential: registration only, never enabling releases or assigning devices.
+OTA_RELEASE_REGISTRATION_KEY = os.getenv("OTA_RELEASE_REGISTRATION_KEY", "")
+OTA_RELEASE_REPOSITORY = os.getenv("OTA_RELEASE_REPOSITORY", "")

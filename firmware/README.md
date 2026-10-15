@@ -55,6 +55,9 @@ provisioning boards: this implementation requires USB to change their trust anch
    tag ruleset restricting creation/update/deletion of release tags to maintainers.
    A YAML environment name alone does **not** enforce human approval.
 2. Add environment secret `FIRMWARE_SIGNING_PRIVATE_KEY` containing the private PEM.
+   Add secret `OTA_RELEASE_REGISTRATION_KEY` and variable `OTA_BACKEND_URL` as
+   described in the [CI/CD setup guide](../docs/FIRMWARE_CICD.md). The registration
+   key must match Django; it has no device-installation authority.
 3. Enable GitHub Actions with permission to create Releases. Keep the release
    workflow and trust anchor under reviewed changes/branch protection.
 4. Firmware pushes/PRs build all three profiles and run host security tests. They
@@ -63,6 +66,12 @@ provisioning boards: this implementation requires USB to change their trust anch
    version; at most 31 bytes). The protected release job rebuilds all roles from
    that tag, runs tests, signs and verifies the package, and publishes a GitHub
    Release. Do not replace assets or reuse a version; publish a new tag for changes.
+6. The registration job downloads and verifies the published assets against the
+   tracked public key and tagged commit, then registers all three roles in Django.
+   New records remain disabled. Review/enable releases and approve devices separately.
+   If registration fails after publication, rerun the failed job or manually run
+   **Signed Firmware Release** with the existing `release_tag`. Manual runs verify
+   and register existing assets without rebuilding, re-signing or republishing.
 
 Each role has `<role>.bin`, `<role>.bin.sig`, `<role>.manifest.json` and
 `<role>.manifest.json.sig`. Manifests bind version, role, hardware ID, full source
@@ -120,8 +129,9 @@ existing telemetry ingestion API. Native telemetry integration is separate work.
 
 ## Register, approve and observe a release
 
-Download the signed manifest and its signature for each role from the GitHub
-Release into a trusted directory. From `backend/`:
+The configured tagged workflow registers releases automatically. For a manual
+fallback, download the signed manifest and its signature for each role from the
+GitHub Release into a trusted directory. From `backend/`:
 
 ```sh
 python manage.py import_firmware_release /PATH/TO/DOWNLOADED_RELEASE \

@@ -2,6 +2,12 @@ name: Signed Firmware Release
 on:
   push:
     tags: ['firmware-v*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing firmware-vX.Y.Z release to verify and register again (no rebuild or republish)'
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -9,6 +15,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   release:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     # Hosting owner must configure required reviewers for this environment.
     environment: firmware-release
@@ -16,6 +23,26 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: Check delivery configuration
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OTA_BACKEND_URL: ${{ vars.OTA_BACKEND_URL }}
+          OTA_RELEASE_REGISTRATION_KEY: ${{ secrets.OTA_RELEASE_REGISTRATION_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse
+          backend = urlparse(os.environ.get('OTA_BACKEND_URL', ''))
+          if (backend.scheme != 'https' or not backend.hostname or backend.username or backend.password
+                  or backend.query or backend.fragment or backend.path not in ('', '/')):
+              raise SystemExit('Configure firmware-release variable OTA_BACKEND_URL as an HTTPS origin')
+          if not os.environ.get('OTA_RELEASE_REGISTRATION_KEY'):
+              raise SystemExit('Configure firmware-release secret OTA_RELEASE_REGISTRATION_KEY to match Django')
+          PY
+          test "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" = false || {
+            echo 'The current ESP32 downloader requires public GitHub release assets.' >&2
+            exit 1
+          }
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -69,3 +96,44 @@ jobs:
       - name: Remove ephemeral signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/firmware-signing.pem"
+  register:
+    name: Verify published assets and register in Django
+    needs: release
+    if: >-
+      always() && !cancelled() &&
+      (needs.release.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: firmware-release
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      OTA_BACKEND_URL: ${{ vars.OTA_BACKEND_URL }}
+      OTA_RELEASE_REGISTRATION_KEY: ${{ secrets.OTA_RELEASE_REGISTRATION_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download and verify the published release, then register it
+        run: |
+          python - <<'PY'
+          import os, re
+          tag = os.environ['RELEASE_TAG']
+          version = tag.removeprefix('firmware-v')
+          if (not tag.startswith('firmware-v') or len(version) > 31
+                  or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?', version)):
+              raise SystemExit('Enter a firmware-v semantic version tag')
+          PY
+          test "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" = false
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = false
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG"
+          release_commit="$(git rev-parse 'FETCH_HEAD^{commit}')"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/published-firmware"
+          python firmware/tools/register_release.py \
+            --directory "$RUNNER_TEMP/published-firmware" \
+            --trusted-key firmware/keys/release-public.pem \
+            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --commit "$release_commit"
+          echo '### Firmware registered' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Three signed role releases are registered. New records remain disabled; review and approve devices in Django admin.' >> "$GITHUB_STEP_SUMMARY"

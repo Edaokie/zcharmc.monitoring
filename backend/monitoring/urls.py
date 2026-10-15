@@ -1,9 +1,10 @@
 from django.urls import path
 from rest_framework.authtoken.views import obtain_auth_token
 
-from . import views, ota
+from . import views, ota, release_registration
 
 urlpatterns = [
+    path("api/firmware/releases/register", release_registration.register),
     path("api/devices/<slug:device_id>/ota", ota.target),
     path("api/devices/<slug:device_id>/report", ota.report),
     path("", views.index),

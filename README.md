@@ -32,6 +32,8 @@ roles. These bench images provide provisioning and updates; native sensor driver
 telemetry buffering/uploads and the operating control cycle are still pending.
 See the [firmware guide](firmware/README.md) before flashing any board. Deploying
 the web applications does not update ESP32 devices automatically.
+The [firmware CI/CD guide](docs/FIRMWARE_CICD.md) explains automatic signed release
+publication and Django registration, followed by staff approval of device updates.
 
 ## Repository layout
 
