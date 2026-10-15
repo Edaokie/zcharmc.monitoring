@@ -109,3 +109,16 @@ class FirmwareApproval(models.Model):
     generation = models.PositiveBigIntegerField()
     approved_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class DeviceReport(models.Model):
+    """Device-reported state transitions, not installation success attestations."""
+    device = models.ForeignKey(Device, on_delete=models.PROTECT)
+    version = models.CharField(max_length=31)
+    status = models.CharField(max_length=32)
+    maintenance = models.BooleanField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        indexes = [models.Index(fields=['device', '-created_at'], name='device_report_time')]

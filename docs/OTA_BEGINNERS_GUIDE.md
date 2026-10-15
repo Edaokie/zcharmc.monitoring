@@ -51,8 +51,8 @@ ESP32 verifies startup locally → reports its running version to Django
 ```
 
 An ordinary code push does not approve installation. A published release alone
-does not approve installation either. The frontend dashboard login cannot approve
-OTA; use the separate Django administration website.
+does not approve installation either. Authorized staff can approve through the
+[Firmware dashboard](FIRMWARE_DASHBOARD.md) or Django administration website.
 
 ## 3. Who needs to do what?
 
@@ -371,3 +371,10 @@ status alone. These are open firmware issues, not completed fixes.
 
 Do not connect the system to operating equipment until these limits and the
 physical acceptance record have been reviewed by its responsible maintainer.
+
+## Approving through the web dashboard
+
+The [firmware dashboard guide](FIRMWARE_DASHBOARD.md) explains real Django login,
+staff permissions, release enablement, selected device approval, withdrawal and
+explicit retries. Complete the signing, initial USB installation and bench checks
+in this guide first. The web page does not replace physical acceptance tests.

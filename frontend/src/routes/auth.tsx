@@ -13,32 +13,25 @@ export const Route = createFileRoute("/auth")({
 });
 
 function LoginPage() {
-  const { login } = useAuth();
+  const { login, error, refresh } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
-  const [remember, setRemember] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setErr(null);
-    if (!/@myiit\.edu\.ph$/i.test(email)) {
-      setErr("Email must end with @myiit.edu.ph");
-      return;
-    }
     setLoading(true);
-    const res = await login(email, password);
+    const res = await login(username, password);
     setLoading(false);
     if (!res.ok) {
       setErr(res.error ?? "Invalid credentials.");
       return;
     }
-    // Role-aware redirect. In production the role is read from server response.
-    const isAdmin = /admin/i.test(email);
-    navigate({ to: isAdmin ? "/dashboard" : "/dashboard" });
+    navigate({ to: "/dashboard" });
   }
 
   return (
@@ -54,25 +47,35 @@ function LoginPage() {
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              myIIT email
+            <label
+              htmlFor="username"
+              className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+            >
+              Django username
             </label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@myiit.edu.ph"
+              id="username"
+              type="text"
+              autoComplete="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Your account username"
               className="w-full border border-border rounded-sm px-3 py-2 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-foreground"
               required
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <label
+              htmlFor="password"
+              className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+            >
               Password
             </label>
             <div className="relative">
               <input
+                id="password"
+                autoComplete="current-password"
                 type={showPw ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -90,23 +93,23 @@ function LoginPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-xs">
-            <label className="flex items-center gap-2 text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={remember}
-                onChange={(e) => setRemember(e.target.checked)}
-                className="accent-foreground"
-              />
-              Remember me
-            </label>
-            <a href="#" className="text-foreground hover:underline">
-              Forgot password?
-            </a>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            Ask the system administrator to create or recover your account.
+          </p>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}{" "}
+              <button type="button" className="underline" onClick={() => void refresh()}>
+                Retry connection
+              </button>
+            </p>
+          )}
 
           {err && (
-            <div className="text-xs text-red-600 border border-red-600/40 bg-red-600/5 rounded-sm px-3 py-2">
+            <div
+              role="alert"
+              className="text-xs text-red-600 border border-red-600/40 bg-red-600/5 rounded-sm px-3 py-2"
+            >
               {err}
             </div>
           )}
@@ -121,8 +124,7 @@ function LoginPage() {
         </form>
 
         <p className="mt-6 text-[10px] text-muted-foreground leading-relaxed">
-          Research / thesis monitoring system. Access restricted to myIIT accounts. Not a
-          public-facing service.
+          Use an account registered in Django. Firmware controls require staff permissions.
         </p>
       </div>
     </div>

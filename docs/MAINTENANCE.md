@@ -1,7 +1,8 @@
 # Maintaining ZCharMC Monitoring
 
 This guide is for maintainers of the frontend and backend. Firmware integration
-and replacement of mock login are separate work. Start with the
+remains separate work. Browser login now uses Django sessions; see
+[firmware dashboard setup](FIRMWARE_DASHBOARD.md). Start with the
 [project overview](../README.md) and [cloud setup](CLOUD_SETUP.md).
 
 ## Before releasing changes
@@ -73,7 +74,7 @@ Document variable names and purposes rather than real values. Never copy secrets
 into issue descriptions, screenshots, test reports, frontend bundles or Git commits.
 
 `ALLOW_PUBLIC_READ=true` makes telemetry and exports public regardless of the
-mock login. CORS controls browser origins, not access authorization. Confidential
+dashboard login. CORS controls browser origins, not access authorization. Confidential
 industrial data requires real frontend/backend authentication before rollout.
 The current shared ingestion key also needs a per-device credential and rotation
 strategy before a fleet deployment.

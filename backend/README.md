@@ -65,7 +65,7 @@ GitHub Actions runs these checks against PostgreSQL 16 and builds the Docker ima
    | `CORS_ALLOWED_ORIGINS` | `https://zcharmc-monitoring.vercel.app` |
    | `CSRF_TRUSTED_ORIGINS` | `https://zcharmc-monitoring.vercel.app` |
    | `INGEST_API_KEY` | Different randomly generated secret; never a Vercel `VITE_*` variable |
-   | `ALLOW_PUBLIC_READ` | `true` only for the existing demo frontend; see authentication below |
+   | `ALLOW_PUBLIC_READ` | `false`; real Django browser login is now required |
 
    `RAILWAY_PUBLIC_DOMAIN` is automatically added to allowed hosts. Add a custom
    domain to `DJANGO_ALLOWED_HOSTS` if one is used. Do not use `*` for allowed origins.
@@ -125,11 +125,10 @@ returns a token; HTTP reads use `Authorization: Token <token>`, Socket.IO connec
 use `auth: { token }`. Account creation is through Django admin. Token issuance is
 not a replacement for login rate limiting and a production browser session design.
 
-The existing frontend still uses simulated browser-side login and does not send
-backend credentials. `ALLOW_PUBLIC_READ=true` permits REST and Socket.IO reads for
-demo compatibility; it makes telemetry public regardless of the frontend login.
-CORS is not authentication. Never enable this for confidential industrial data.
-Frontend authentication integration is separate from this backend migration.
+The frontend uses real Django browser sessions through its same-origin proxy.
+Keep `ALLOW_PUBLIC_READ=false`. Explicitly enabling it permits public telemetry
+reads and Socket.IO connections; it never grants staff firmware operations.
+See the [browser deployment guide](../docs/FIRMWARE_DASHBOARD.md).
 
 Telemetry writes always require `Authorization: Bearer <INGEST_API_KEY>` and JSON
 at `POST /api/ingest`. This is a shared compatibility ingestion key; provision
@@ -233,14 +232,14 @@ Zero remains a real measurement; missing values stay null.
 
 Deploy Railway before a frontend version that requires `/api/series`. That chart
 endpoint needs no schema change, but the current operational diagnostics require
-migration `0002_ingestionstatus`, described below. Firmware and mock login remain
+migration `0002_ingestionstatus`, described below. At the time of that telemetry-only change, firmware and mock login remained
 unchanged.
 
 ## Telemetry validation and operations
 
 Deploy migration `0002_ingestionstatus` before serving the updated backend. The
 existing Railway pre-deploy migration step handles it. No frontend, firmware or
-mock-login change is required.
+login change is required for these synthetic telemetry checks.
 
 Sensor readings require at least one finite, non-null measurement. Zero remains
 valid where within bounds; omitted/null fields remain unknown. Unknown sensor
@@ -304,8 +303,34 @@ registration and target delivery. No private firmware signing key belongs on Rai
 
 `GET /api/devices/<device_id>/ota` and `POST /api/devices/<device_id>/report` require
 that specific device's bearer token, regardless of `ALLOW_PUBLIC_READ`. The
-existing ingestion API and mock dashboard login are unchanged. Django staff manage
-releases and device targets through admin; the frontend cannot approve updates.
+ingestion API retains its separate credential. Authorized Django staff manage
+releases and device targets through admin or the new frontend Firmware page.
 Provisioning and release import commands are administrative operations, not public
 API endpoints. Follow the [firmware release guide](../firmware/README.md) for exact
 setup, signing, first USB installation, staged approval and bench limitations.
+
+
+## Browser authentication and fleet API
+
+The dashboard uses Django sessions: `GET /api/auth/session`, `POST /api/auth/login`
+(username/password), `POST /api/auth/logout`, and `POST /api/auth/socket-ticket`.
+Login and authenticated browser mutations require CSRF protection. Sessions expire
+in eight hours. Authentication and fleet responses use private/no-store caching. Socket tickets expire
+in two minutes, are consumed once, and require a still-valid session at connection.
+
+Firmware routes require active staff status and all permissions documented in the
+[firmware dashboard guide](../docs/FIRMWARE_DASHBOARD.md):
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/firmware/devices` | Paginated devices, optional `search` |
+| GET | `/api/firmware/releases` | Paginated releases, optional `profile`/`hardware` |
+| PATCH | `/api/firmware/releases/<id>` | Set `{ "enabled": true/false }` |
+| POST | `/api/firmware/devices/<device_id>/target` | Set `release_id` or null and `expected_generation` |
+| POST | `/api/firmware/devices/<device_id>/retry` | Increment generation of the assigned release |
+| GET | `/api/firmware/devices/<device_id>/history` | Latest 50 combined approval/report events |
+
+Target/retry requests for control devices also require `maintenance_confirmed: true`
+and a maintenance report within three minutes. Stale generations return 409.
+Device identity, role, credentials and reported state cannot be edited through these
+routes. Device and CI registration keys do not authorize these staff operations.

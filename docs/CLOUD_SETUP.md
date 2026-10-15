@@ -7,11 +7,12 @@ flowchart LR
   Browser[Browser running Vercel dashboard] -->|REST reads and Socket.IO| API
 ```
 
-The browser downloads the dashboard from Vercel, then talks directly to Railway.
+The browser downloads the dashboard from Vercel. HTTP uses its `/backend` proxy
+to Railway; Socket.IO connects directly with an authenticated short-lived ticket.
 Devices upload to Railway only. PostgreSQL has no device-facing or browser-facing
 credentials. No Raspberry Pi, local server, or MQTT broker is part of this target.
-Firmware is still unchanged and uses its existing MQTT configuration, so deploying
-the cloud changes does not start physical device uploads.
+The active native ESP-IDF firmware provides bench OTA; physical telemetry uploads
+remain pending. Deploying the cloud changes does not start physical device uploads.
 
 ## Existing hosting projects
 
@@ -30,7 +31,7 @@ The frontend's checked-in `vercel.json` already embeds the Railway origin as
 variable set to that same value. A changed Vite variable requires a new build.
 
 The backend image enables HTTPS redirects (excluding the internal health probe),
-the canonical CORS origin, and the previously approved public demo reads. Explicit
+the canonical CORS/CSRF origins, and authenticated telemetry reads. Explicit
 Railway variables override image defaults. The owner should verify these service
 variables once; secrets cannot be configured safely through public repository files:
 
@@ -42,7 +43,8 @@ variables once; secrets cannot be configured safely through public repository fi
 | `DJANGO_SECURE_SSL_REDIRECT` | `true` |
 | `INGEST_API_KEY` | Private ingestion secret, shared only with authorized uploaders |
 | `CORS_ALLOWED_ORIGINS` | `https://zcharmc-monitoring.vercel.app` |
-| `ALLOW_PUBLIC_READ` | `true`, preserving the approved demo and mock login |
+| `ALLOW_PUBLIC_READ` | `false` |
+| `CSRF_TRUSTED_ORIGINS` | `https://zcharmc-monitoring.vercel.app` |
 
 Keep App Sleeping disabled and use On Failure restarts. The startup health check
 confirms database connectivity; it is not continuous uptime monitoring. Keep the
@@ -132,3 +134,5 @@ authenticated ingestion, duplicate retries, live events, history, CSV, and Socke
 reconnect recovery. See [the test guide](../backend/tools/README.md) for browser
 checks. No automatic seed runs on deploy. Cloud verification does not verify ESP32
 connectivity while the firmware is unchanged.
+
+For the real Django login and staff OTA page, follow the [firmware dashboard deployment guide](FIRMWARE_DASHBOARD.md).

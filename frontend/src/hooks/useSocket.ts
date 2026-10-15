@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { io } from "socket.io-client";
 import { BACKEND_URL } from "@/lib/api";
+import { apiRequest } from "@/lib/http";
 import { compareReadings, mergeReading } from "@/lib/readings";
 import type { MeasurementField } from "@/lib/monitoring";
 import type { ValveState } from "@/lib/mock-data";
@@ -86,7 +87,17 @@ export function useSocket() {
   );
 
   useEffect(() => {
+    let disposed = false;
     const socket = io(BACKEND_URL, {
+      auth: (callback) => {
+        void apiRequest<{ ticket: string }>("/api/auth/socket-ticket", { method: "POST" })
+          .then(({ ticket }) => {
+            if (!disposed) callback({ ticket });
+          })
+          .catch(() => {
+            if (!disposed) callback({ ticket: "" });
+          });
+      },
       transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: Infinity,
@@ -95,9 +106,17 @@ export function useSocket() {
     });
     socket.on("connect", () => setConnected(true));
     socket.on("disconnect", () => setConnected(false));
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    socket.on("connect_error", () => {
+      setConnected(false);
+      clearTimeout(retry);
+      retry = setTimeout(() => socket.connect(), 5000);
+    });
     socket.on("co2_update", handleUpdate);
     socket.on("valve_update", handleValveUpdate);
     return () => {
+      disposed = true;
+      clearTimeout(retry);
       socket.off("co2_update", handleUpdate);
       socket.off("valve_update", handleValveUpdate);
       socket.disconnect();

@@ -1,9 +1,19 @@
 from django.urls import path
 from rest_framework.authtoken.views import obtain_auth_token
 
-from . import views, ota, release_registration
+from . import views, ota, release_registration, browser_auth, fleet
 
 urlpatterns = [
+    path('api/auth/session', browser_auth.session),
+    path('api/auth/login', browser_auth.sign_in),
+    path('api/auth/logout', browser_auth.sign_out),
+    path('api/auth/socket-ticket', browser_auth.socket_ticket),
+    path('api/firmware/devices', fleet.devices),
+    path('api/firmware/releases', fleet.releases),
+    path('api/firmware/releases/<int:release_id>', fleet.enable_release),
+    path('api/firmware/devices/<slug:device_id>/target', fleet.set_target),
+    path('api/firmware/devices/<slug:device_id>/retry', fleet.set_target, {'retry': True}),
+    path('api/firmware/devices/<slug:device_id>/history', fleet.history),
     path("api/firmware/releases/register", release_registration.register),
     path("api/devices/<slug:device_id>/ota", ota.target),
     path("api/devices/<slug:device_id>/report", ota.report),

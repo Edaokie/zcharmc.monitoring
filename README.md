@@ -54,16 +54,15 @@ frontend. Docker Compose can provide the local PostgreSQL database.
 
 1. Follow the [backend setup](backend/README.md#local-development) to create the
    local environment, migrate the database and start the API on port 5001.
-2. For the existing mock-login dashboard to read a local backend, set
-   `ALLOW_PUBLIC_READ=true` in the backend's local `.env`. This makes that backend's
-   readings public; use a separate local database containing test data.
+2. Create a Django account with `python manage.py createsuperuser` from `backend/`.
+   Keep `ALLOW_PUBLIC_READ=false`; the dashboard now uses real Django sessions.
 3. Follow the [frontend setup](frontend/README.md#local-development) to start the
-   dashboard on port 3000. Its local API URL is `http://localhost:5001`.
+   dashboard on port 3000, then sign in with the Django username and password.
 4. Create labelled test readings using the [verification guide](backend/tools/README.md).
    An empty database will display no readings; deployment does not seed data.
 
-The frontend mock login and Django administration use separate accounts. The mock
-login is a demonstration screen and does not authenticate with Django.
+The [firmware dashboard guide](docs/FIRMWARE_DASHBOARD.md) explains staff permissions,
+deployment settings and approving updates for selected devices.
 
 ## Deployment and maintenance
 
@@ -83,8 +82,8 @@ currently deployed.
 
 ## Current limitations
 
-- **Mock login:** frontend roles are simulated and do not protect backend data.
-  With `ALLOW_PUBLIC_READ=true`, readings, reports and exports are publicly readable.
+- **Authentication:** Django sessions protect the dashboard. Explicitly enabling
+  `ALLOW_PUBLIC_READ=true` still makes telemetry and exports publicly readable.
 - **Device uploads:** direct HTTPS uploads and durable offline buffering still need
   firmware work. During an internet outage, cloud services cannot receive site data.
 - **Equipment control:** remote valve and vacuum actuation is unavailable. Reported

@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AppAlertsRouteImport } from './routes/_app.alerts'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
+import { Route as AppFirmwareRouteImport } from './routes/_app.firmware'
 import { Route as AppReportsRouteImport } from './routes/_app.reports'
 
 const IndexRoute = IndexRouteImport.update({
@@ -40,6 +41,11 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFirmwareRoute = AppFirmwareRouteImport.update({
+  id: '/firmware',
+  path: '/firmware',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppReportsRoute = AppReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/alerts': typeof AppAlertsRoute
   '/dashboard': typeof AppDashboardRoute
+  '/firmware': typeof AppFirmwareRoute
   '/reports': typeof AppReportsRoute
 }
 export interface FileRoutesByTo {
@@ -58,6 +65,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/alerts': typeof AppAlertsRoute
   '/dashboard': typeof AppDashboardRoute
+  '/firmware': typeof AppFirmwareRoute
   '/reports': typeof AppReportsRoute
 }
 export interface FileRoutesById {
@@ -67,13 +75,14 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_app/alerts': typeof AppAlertsRoute
   '/_app/dashboard': typeof AppDashboardRoute
+  '/_app/firmware': typeof AppFirmwareRoute
   '/_app/reports': typeof AppReportsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/alerts' | '/dashboard' | '/reports'
+  fullPaths: '/' | '/auth' | '/alerts' | '/dashboard' | '/firmware' | '/reports'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/alerts' | '/dashboard' | '/reports'
+  to: '/' | '/auth' | '/alerts' | '/dashboard' | '/firmware' | '/reports'
   id:
     | '__root__'
     | '/'
@@ -81,6 +90,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_app/alerts'
     | '/_app/dashboard'
+    | '/_app/firmware'
     | '/_app/reports'
   fileRoutesById: FileRoutesById
 }
@@ -127,6 +137,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/firmware': {
+      id: '/_app/firmware'
+      path: '/firmware'
+      fullPath: '/firmware'
+      preLoaderRoute: typeof AppFirmwareRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/reports': {
       id: '/_app/reports'
       path: '/reports'
@@ -140,12 +157,14 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppAlertsRoute: typeof AppAlertsRoute
   AppDashboardRoute: typeof AppDashboardRoute
+  AppFirmwareRoute: typeof AppFirmwareRoute
   AppReportsRoute: typeof AppReportsRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAlertsRoute: AppAlertsRoute,
   AppDashboardRoute: AppDashboardRoute,
+  AppFirmwareRoute: AppFirmwareRoute,
   AppReportsRoute: AppReportsRoute,
 }
 

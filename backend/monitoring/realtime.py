@@ -1,5 +1,10 @@
 import socketio
+import hashlib
+from types import SimpleNamespace
 from django.conf import settings
+from django.core.cache import cache
+from django.contrib.auth import get_user
+from django.contrib.sessions.backends.db import SessionStore
 from django.db import close_old_connections
 
 sio = socketio.Server(
@@ -15,7 +20,17 @@ def connect(sid, environ, auth):
         if not settings.ALLOW_PUBLIC_READ:
             from rest_framework.authtoken.models import Token
             key = auth.get("token") if isinstance(auth, dict) else None
-            if not isinstance(key, str) or not Token.objects.filter(key=key, user__is_active=True).exists():
+            ticket = auth.get('ticket') if isinstance(auth, dict) else None
+            browser_user = None
+            if isinstance(ticket, str) and len(ticket) <= 256:
+                cache_key = 'browser-socket:' + hashlib.sha256(ticket.encode()).hexdigest()
+                session_key = cache.get(cache_key)
+                consumed = cache.delete(cache_key)
+                if session_key and consumed:
+                    browser_user = get_user(SimpleNamespace(session=SessionStore(session_key=session_key)))
+            browser_ok = browser_user and browser_user.is_authenticated and browser_user.is_active
+            token_ok = isinstance(key, str) and Token.objects.filter(key=key, user__is_active=True).exists()
+            if not browser_ok and not token_ok:
                 return False
         # Restore the latest state after reconnecting instead of showing invented values.
         from .models import NODE_IDS, Reading, ValveSnapshot

@@ -89,7 +89,7 @@ STORAGES = {
 
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
-# Temporary compatibility with the existing frontend's mock login. Off by default.
+# Explicit public telemetry mode; keep false for authenticated deployments.
 ALLOW_PUBLIC_READ = os.getenv("ALLOW_PUBLIC_READ", "false").lower() == "true"
 # During the approved public demo, retain the production dashboard origin even
 # when an older Railway variable overrides the image's CORS default.
@@ -117,6 +117,9 @@ SECURE_REDIRECT_EXEMPT = [r"^api/health$"]
 SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "0"))
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_HTTPONLY = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 LOGGING = {

@@ -3,8 +3,20 @@
   "installCommand": "bun install --frozen-lockfile",
   "buildCommand": "bun run build",
   "ignoreCommand": "exit 1",
-  "git": {"deploymentEnabled": true},
-  "github": {"autoJobCancelation": false},
+  "git": { "deploymentEnabled": true },
+  "github": { "autoJobCancelation": false },
+  "rewrites": [
+    {
+      "source": "/backend/:path*",
+      "destination": "https://zcharmcmonitoring-production.up.railway.app/:path*"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/backend/:path*",
+      "headers": [{ "key": "Cache-Control", "value": "private, no-store" }]
+    }
+  ],
   "build": {
     "env": {
       "NITRO_PRESET": "vercel",

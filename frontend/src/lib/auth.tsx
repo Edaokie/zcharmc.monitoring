@@ -1,63 +1,81 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { apiRequest, setCsrfToken } from "./http";
 
 export type Role = "admin" | "client";
 export interface User {
   email: string;
   name: string;
   role: Role;
+  username: string;
+  can_manage_firmware: boolean;
 }
 
 interface AuthContextValue {
   user: User | null;
-  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
-  logout: () => void;
+  login: (username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  logout: () => Promise<void>;
+  refresh: () => Promise<void>;
+  error: string | null;
   ready: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-const STORAGE_KEY = "zcharmc.auth";
-const EMAIL_DOMAIN = /@myiit\.edu\.ph$/i;
-
-// NOTE: In production, replace this mock with the Flask `/api/auth/login` call and
-// store the token via httpOnly cookie set by the server. Never persist raw JWTs in
-// localStorage. This mock is for UI wiring only.
+interface SessionResponse {
+  user: User | null;
+  csrf_token: string;
+}
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
 
+  const [error, setError] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    setError(null);
+    try {
+      const session = await apiRequest<SessionResponse>("/api/auth/session");
+      setCsrfToken(session.csrf_token);
+      setUser(session.user);
+    } catch {
+      setUser(null);
+      setError("The account service is unavailable. Check the connection and try again.");
+    } finally {
+      setReady(true);
+    }
+  }, []);
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setUser(JSON.parse(raw));
+      localStorage.removeItem("zcharmc.auth");
     } catch {
-      // ignore
+      /* Storage restrictions do not prevent session login. */
     }
-    setReady(true);
-  }, []);
+    void refresh();
+  }, [refresh]);
 
-  const login: AuthContextValue["login"] = async (email, password) => {
-    if (!EMAIL_DOMAIN.test(email)) {
-      return { ok: false, error: "Email must be a @myiit.edu.ph address." };
+  const login: AuthContextValue["login"] = async (username, password) => {
+    try {
+      const session = await apiRequest<SessionResponse>("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      });
+      setCsrfToken(session.csrf_token);
+      setUser(session.user);
+      setError(null);
+      return { ok: true };
+    } catch (cause) {
+      return { ok: false, error: cause instanceof Error ? cause.message : "Sign in failed." };
     }
-    if (!password || password.length < 4) {
-      return { ok: false, error: "Invalid credentials." };
-    }
-    await new Promise((r) => setTimeout(r, 600));
-    // Mock role assignment: emails containing "admin" get admin role.
-    const role: Role = /admin/i.test(email) ? "admin" : "client";
-    const u: User = { email, name: email.split("@")[0], role };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
-    setUser(u);
-    return { ok: true };
   };
 
-  const logout = () => {
-    localStorage.removeItem(STORAGE_KEY);
+  const logout = async () => {
+    const session = await apiRequest<SessionResponse>("/api/auth/logout", { method: "POST" });
+    setCsrfToken(session.csrf_token);
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, ready }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, login, logout, ready, refresh, error }}>
+      {children}
+    </AuthContext.Provider>
   );
 }
 

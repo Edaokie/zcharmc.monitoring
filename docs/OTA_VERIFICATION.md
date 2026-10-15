@@ -1,5 +1,33 @@
 # OTA release foundation: local verification
 
+## Firmware dashboard verification: 2026-10-15
+
+The working tree now adds real Django browser sessions, a staff Firmware page,
+release enable/disable, selected-device targets, withdrawal and explicit retries.
+The [dashboard guide](FIRMWARE_DASHBOARD.md) covers deployment and operator steps.
+This addition has not been pushed or deployed, and no board was flashed.
+
+- 47 backend tests passed against isolated SQLite, including browser CSRF/login,
+  staff permissions, compatibility/signature checks, control maintenance gating,
+  stale-generation rejection, audit history and socket ticket replay/logout.
+- 13 frontend tests and 10 firmware host tests passed. TypeScript and the Vercel
+  production build passed; lint has no errors and eight existing warnings.
+- Django migration consistency passed. Migration `0004_devicereport` is required.
+- A local browser connected through the Vite proxy to real Gunicorn/Django with
+  disposable test accounts, devices, signed metadata and a separate SQLite file.
+  Incorrect login was rejected. Staff enabled a release, approved a device,
+  approved another attempt and withdrew its target. Three approval records and
+  the withdrawn target persisted after reload. A synthetic device HTTP report
+  appeared as a new version/state event. Logout and ordinary-user denial of the
+  Firmware page were verified. The ordinary account also connected to authenticated
+  Socket.IO monitoring. The narrow layout was inspected and its sidebar corrected.
+
+These are web/control-plane checks, not an ESP32 download, reboot or rollback test.
+Production Vercel proxy/cookie forwarding, Railway variables, PostgreSQL locking,
+the release workflow and physical OTA acceptance still require deployed verification.
+No firmware C source changed in this addition; the three earlier image builds were
+not repeated.
+
 ## Current readiness: 2026-10-15
 
 The CI/CD registration implementation is present in local commit `23b2c8e`.

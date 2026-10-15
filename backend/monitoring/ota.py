@@ -11,12 +11,13 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from django.db import transaction
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework import serializers
 
-from .models import Device
+from .models import Device, DeviceReport
 
 
 def validate_release(release):
@@ -92,10 +93,14 @@ class ReportSerializer(serializers.Serializer):
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([DevicePermission])
+@transaction.atomic
 def report(request, device_id):
     serializer = ReportSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     data = serializer.validated_data
-    Device.objects.filter(pk=request.ota_device.pk).update(reported_version=data["version"],
+    device = Device.objects.select_for_update().get(pk=request.ota_device.pk)
+    if (device.reported_version, device.reported_status, device.maintenance) != (data['version'], data['status'], data['maintenance']):
+        DeviceReport.objects.create(device=device, version=data['version'], status=data['status'], maintenance=data['maintenance'])
+    Device.objects.filter(pk=device.pk).update(reported_version=data["version"],
         reported_status=data["status"], maintenance=data["maintenance"], last_seen=timezone.now())
     return private(Response({"ok": True}))

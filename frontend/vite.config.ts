@@ -13,6 +13,15 @@ export default defineConfig({
     server: { entry: "server" },
   },
   vite: {
+    server: {
+      proxy: {
+        "/backend": {
+          target: process.env.VITE_BACKEND_URL || "http://localhost:5001",
+          changeOrigin: true,
+          rewrite: (path: string) => path.replace(/^\/backend/, ""),
+        },
+      },
+    },
     resolve: {
       dedupe: ["apexcharts", "react-apexcharts"],
     },

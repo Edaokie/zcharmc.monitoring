@@ -1,4 +1,5 @@
 import type { MeasurementField } from "./monitoring";
+import { apiRequest, API_PROXY } from "./http";
 
 // ─────────────────────────────────────────
 // API Service Layer — all backend communication
@@ -92,10 +93,7 @@ function buildParams(filter: ReadingsFilter): URLSearchParams {
 }
 
 async function apiFetch<T>(path: string, params?: URLSearchParams): Promise<T> {
-  const url = params ? `${BACKEND_URL}${path}?${params}` : `${BACKEND_URL}${path}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`API error ${res.status}: ${res.statusText}`);
-  return res.json();
+  return apiRequest(params ? `${path}?${params}` : path);
 }
 
 // ─────────────────────────────────────────
@@ -127,9 +125,7 @@ export async function fetchSeries(
   range: DateRange,
   signal?: AbortSignal,
 ): Promise<SeriesReading[]> {
-  const response = await fetch(`${BACKEND_URL}/api/series?range=${range}`, { signal });
-  if (!response.ok) throw new Error(`History API error ${response.status}`);
-  return response.json();
+  return apiRequest(`/api/series?range=${range}`, { signal });
 }
 
 /** Get filtered, paginated readings */
@@ -157,7 +153,7 @@ export async function fetchAlerts(
 /** Download CSV — triggers browser file download */
 export function exportCSV(filter: ReadingsFilter = {}): void {
   const params = buildParams(filter);
-  const url = `${BACKEND_URL}/api/export/csv?${params}`;
+  const url = `${API_PROXY}/api/export/csv?${params}`;
   // Open in new tab triggers download because of Content-Disposition header
   window.open(url, "_blank");
 }

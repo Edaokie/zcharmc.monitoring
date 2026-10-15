@@ -23,10 +23,13 @@ trailing slash. The backend's CORS configuration must include `http://localhost:
 the backend example already includes it. If a different port or hostname is used,
 add that exact origin to the local backend configuration.
 
-The current dashboard uses mock login and sends no Django authentication token.
-Enable `ALLOW_PUBLIC_READ=true` only on a backend whose data may be publicly read;
-for development, use an isolated local test database. Restart the backend after
-changing its local settings. Django admin uses a real Django account separately.
+Sign in with a real Django username and password. Create a local account using
+`python manage.py createsuperuser` in `backend/`. Keep `ALLOW_PUBLIC_READ=false`
+and include `http://localhost:3000` in `CSRF_TRUSTED_ORIGINS` as well as CORS origins.
+Browser HTTP uses the `/backend` same-origin proxy; Socket.IO uses the backend
+origin and a short-lived authenticated ticket. Credentials are not stored in
+localStorage. See the [firmware dashboard guide](../docs/FIRMWARE_DASHBOARD.md)
+for staff permissions and deployment order.
 
 An empty database shows no telemetry. See the [synthetic test guide](../backend/tools/README.md)
 for controlled test readings. Firmware does not need to be changed for these tests.
