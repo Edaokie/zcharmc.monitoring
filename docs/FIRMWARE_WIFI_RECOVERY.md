@@ -1,8 +1,9 @@
 # Wi-Fi outages and buffered firmware readings
 
 This implementation is for disconnected bench evaluation. The ESP32-WROOM32 still
-requires **2.4 GHz Wi-Fi**; software cannot add a 5 GHz radio. Inlet/outlet sensors
-currently generate **simulated** values. Control remains maintenance-only.
+requires **2.4 GHz Wi-Fi**; software cannot add a 5 GHz radio. All three roles
+currently generate deterministic **simulated** values. Control remains maintenance-only
+and does not configure actuator GPIOs. See the [three-board guide](FIRMWARE_STATIC_BENCH.md).
 
 ## What happens during an outage
 
@@ -52,6 +53,8 @@ records are the recovery target. An unknown/nonempty partition format is rejecte
 
 The queue survives application OTA and ordinary reboot, provided its partition is
 not erased or repurposed. Downgrading to older firmware does not drain this queue.
+Version 2 firmware reads both original four-field (v1) and expanded (v2) records;
+the USB decoder supports both. Older firmware cannot drain new v2 records.
 An erase-flash operation destroys the queue and provisioning. Back up first.
 
 ## Clock behavior: never fabricate measurement time
@@ -76,17 +79,18 @@ queue capacity until an operator plans recovery.
 ## Enable a supervised simulated upload test
 
 1. Deploy the backend changes and run `python manage.py migrate --noinput`.
-   Migration `0005_device_allow_test_telemetry_devicetestreading` is required.
+   Apply all migrations through `0006_devicetestreading_device_test_latest`.
 2. In Django admin, open the intended **Device** and enable **Allow test telemetry**.
    It defaults to false for all devices. Keep the device enabled and use its existing
    provisioning credential; no shared ingestion key is added to firmware.
-3. Install the matching inlet/outlet build on a disconnected bench board using the
+3. Install the matching inlet/outlet/control build on a disconnected bench board using the
    existing provisioning/OTA instructions. Ensure the reserved partition is empty
    or already contains the supported outbox format. Do not erase an unknown partition
    merely to bypass an error.
 4. Inspect serial output for `sample persisted`, queue count, SNTP synchronization,
    and any upload failures. Keep a serial log to establish before/after evidence.
-5. Open **Device test readings** in Django admin. These explicitly simulated records
+5. Open **Bench simulation** (`/bench`) with an authorized firmware staff account,
+   or **Device test readings** in Django admin. These explicitly simulated records
    are stored separately from research `Reading` rows and do **not** appear in the
    Vercel live measurement charts. This avoids presenting fake sensors as real data.
 6. Disable the router's 2.4 GHz network for two minutes. Expect acquisition to
@@ -103,7 +107,8 @@ queue capacity until an operator plans recovery.
 The endpoint is `POST /api/devices/<device_id>/telemetry` with that device's bearer
 token and an envelope `{ "source": "simulated", "reading": { ... } }`. The reading
 requires its original timestamp and stable message ID and must match the device's
-inlet/outlet role. This endpoint is for the current simulated sensor stage; it is
+inlet/outlet/control role. Control snapshots require four simulated valve states
+and two finite weights; no hardware commands are issued. This endpoint is for the current simulated sensor stage; it is
 not a completed real-sensor acquisition/control system.
 
 ## Read-only USB recovery export

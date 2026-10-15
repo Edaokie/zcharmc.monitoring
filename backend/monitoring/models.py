@@ -135,3 +135,4 @@ class DeviceTestReading(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=['device', 'message_id'], name='unique_device_test_reading')]
         ordering = ['-received_at', '-pk']
+        indexes = [models.Index(fields=['device', '-received_at', '-id'], name='device_test_latest')]

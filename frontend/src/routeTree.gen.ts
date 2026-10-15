@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AppAlertsRouteImport } from './routes/_app.alerts'
+import { Route as AppBenchRouteImport } from './routes/_app.bench'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppFirmwareRouteImport } from './routes/_app.firmware'
 import { Route as AppReportsRouteImport } from './routes/_app.reports'
@@ -36,6 +37,11 @@ const AppAlertsRoute = AppAlertsRouteImport.update({
   path: '/alerts',
   getParentRoute: () => AppRoute,
 } as any)
+const AppBenchRoute = AppBenchRouteImport.update({
+  id: '/bench',
+  path: '/bench',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDashboardRoute = AppDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -56,6 +62,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/alerts': typeof AppAlertsRoute
+  '/bench': typeof AppBenchRoute
   '/dashboard': typeof AppDashboardRoute
   '/firmware': typeof AppFirmwareRoute
   '/reports': typeof AppReportsRoute
@@ -64,6 +71,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/alerts': typeof AppAlertsRoute
+  '/bench': typeof AppBenchRoute
   '/dashboard': typeof AppDashboardRoute
   '/firmware': typeof AppFirmwareRoute
   '/reports': typeof AppReportsRoute
@@ -74,21 +82,37 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
   '/_app/alerts': typeof AppAlertsRoute
+  '/_app/bench': typeof AppBenchRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/firmware': typeof AppFirmwareRoute
   '/_app/reports': typeof AppReportsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/alerts' | '/dashboard' | '/firmware' | '/reports'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/alerts'
+    | '/bench'
+    | '/dashboard'
+    | '/firmware'
+    | '/reports'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/alerts' | '/dashboard' | '/firmware' | '/reports'
+  to:
+    | '/'
+    | '/auth'
+    | '/alerts'
+    | '/bench'
+    | '/dashboard'
+    | '/firmware'
+    | '/reports'
   id:
     | '__root__'
     | '/'
     | '/_app'
     | '/auth'
     | '/_app/alerts'
+    | '/_app/bench'
     | '/_app/dashboard'
     | '/_app/firmware'
     | '/_app/reports'
@@ -130,6 +154,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAlertsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/bench': {
+      id: '/_app/bench'
+      path: '/bench'
+      fullPath: '/bench'
+      preLoaderRoute: typeof AppBenchRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/dashboard': {
       id: '/_app/dashboard'
       path: '/dashboard'
@@ -156,6 +187,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppAlertsRoute: typeof AppAlertsRoute
+  AppBenchRoute: typeof AppBenchRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppFirmwareRoute: typeof AppFirmwareRoute
   AppReportsRoute: typeof AppReportsRoute
@@ -163,6 +195,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppAlertsRoute: AppAlertsRoute,
+  AppBenchRoute: AppBenchRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppFirmwareRoute: AppFirmwareRoute,
   AppReportsRoute: AppReportsRoute,

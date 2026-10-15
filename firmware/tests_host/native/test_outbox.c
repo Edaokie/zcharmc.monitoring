@@ -121,7 +121,7 @@ static void retry(void) {
 }
 static void fixture(const char *path) {
     reset(); zc_outbox_t q; openq(&q);
-    zc_sample_t sample={.version=1,.flags=3,.sequence=7,.uptime_ms=15000,.utc_ms=1760000000123LL,.co2=4000,.temperature=29.25f,.profile=1};
+    zc_sample_v1_t sample={.version=1,.flags=3,.sequence=7,.uptime_ms=15000,.utc_ms=1760000000123LL,.co2=4000,.temperature=29.25f,.profile=1};
     strcpy(sample.device_id,"bench-inlet");
     uint64_t order;
     assert(zc_outbox_put(&q,&sample,sizeof(sample),0,&order)==0);

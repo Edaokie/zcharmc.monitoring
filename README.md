@@ -31,7 +31,9 @@ native ESP-IDF/FreeRTOS with an approved signed OTA release foundation for three
 roles. These bench images provide provisioning, updates, Wi-Fi recovery and buffered
 simulated telemetry. Native sensor drivers and the operating control cycle remain
 pending. Simulated uploads are explicitly enabled and stored separately from real
-measurements; see the [outage recovery guide](docs/FIRMWARE_WIFI_RECOVERY.md).
+measurements; see the [three-board static test guide](docs/FIRMWARE_STATIC_BENCH.md)
+and [outage recovery guide](docs/FIRMWARE_WIFI_RECOVERY.md). Authorized firmware
+staff can inspect all three roles at `/bench` after deploying these changes.
 See the [firmware guide](firmware/README.md) before flashing any board. Deploying
 the web applications does not update ESP32 devices automatically.
 The [firmware CI/CD guide](docs/FIRMWARE_CICD.md) explains automatic signed release

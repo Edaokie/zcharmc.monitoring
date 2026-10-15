@@ -72,7 +72,7 @@ static double rounded(float value,unsigned decimals) {
 static char *payload(const sample_t *r,char id[96]) {
     char hex[33],timestamp[32];
     for (unsigned i=0;i<16;i++) snprintf(hex+2*i,3,"%02x",r->boot[i]);
-    const char *profile=r->profile==1 ? "inlet" : "outlet";
+    const char *profile=r->profile==1 ? "inlet" : r->profile==2 ? "outlet" : "control";
     snprintf(id,96,"test-%s-%s-%llu",profile,hex,(unsigned long long)r->sequence);
     time_t seconds=(time_t)(r->utc_ms/1000); struct tm utc;
     gmtime_r(&seconds,&utc); strftime(timestamp,sizeof(timestamp),"%Y-%m-%dT%H:%M:%S",&utc);
@@ -84,10 +84,22 @@ static char *payload(const sample_t *r,char id[96]) {
     }
     bool ok=cJSON_AddStringToObject(reading,"node_id",profile)&&cJSON_AddStringToObject(reading,"message_id",id)
         &&cJSON_AddStringToObject(reading,"timestamp",exact);
-    const char *names[]={"co2","temperature","humidity","pm25"};
-    const float values[]={r->co2,r->temperature,r->humidity,r->pm25};
-    for (unsigned i=0;i<4;i++) if (r->flags&(1u<<i))
-        ok=ok&&isfinite(values[i])&&cJSON_AddNumberToObject(reading,names[i],rounded(values[i],i!=0));
+    const char *names[]={"co2","temperature","humidity","ph","pm25","flow_rate","level","weight","no2","so2","pressure1","pressure2"};
+    _Static_assert(sizeof(names)/sizeof(names[0])==ZC_FIELDS,"Measurement names must match adapter fields");
+    for (unsigned i=0;i<ZC_FIELDS;i++) if (r->flags&(1u<<i))
+        ok=ok&&isfinite(r->values[i])&&cJSON_AddNumberToObject(reading,names[i],rounded(r->values[i],i!=0));
+    if (r->profile==3) {
+        cJSON *valves=cJSON_AddObjectToObject(reading,"valves");
+        cJSON *weights=cJSON_AddObjectToObject(reading,"weights");
+        ok=ok&&valves&&weights&&(r->control_flags==7);
+        for (unsigned i=0;ok&&i<4;i++) {
+            char name[8]; snprintf(name,sizeof(name),"sv%u",i+1);
+            ok=cJSON_AddBoolToObject(valves,name,(r->valve_bits&(1u<<i))!=0)!=NULL;
+        }
+        ok=ok&&isfinite(r->weight1_g)&&isfinite(r->weight2_g)
+            &&cJSON_AddNumberToObject(weights,"weight1",rounded(r->weight1_g,1))
+            &&cJSON_AddNumberToObject(weights,"weight2",rounded(r->weight2_g,1));
+    }
     char *json=ok ? cJSON_PrintUnformatted(root) : NULL;
     cJSON_Delete(root); return json;
 }
@@ -128,13 +140,14 @@ static void sample_task(void *arg) {
     TickType_t next=xTaskGetTickCount();
     for (;;) {
         if (!zc_config.provisioned) { xTaskDelayUntil(&next,pdMS_TO_TICKS(PERIOD_MS)); continue; }
-        sample_t r={.version=1,.profile=!strcmp(ZC_PROFILE,"inlet") ? 1 : 2,.sequence=sequence++};
+        sample_t r={.version=2,.profile=!strcmp(ZC_PROFILE,"inlet") ? 1 : !strcmp(ZC_PROFILE,"outlet") ? 2 : 3,.sequence=sequence++};
         memcpy(r.device_id,zc_config.device_id,sizeof(zc_config.device_id));
         memcpy(r.boot,boot,sizeof(boot)); r.uptime_ms=esp_timer_get_time()/1000;
         zc_reading_t reading;
         if (zc_sensors_read_all(&reading)) {
-            r.flags=(reading.has_co2?1:0)|(reading.has_temperature?2:0)|(reading.has_humidity?4:0)|(reading.has_pm25?8:0);
-            r.co2=reading.co2; r.temperature=reading.temperature; r.humidity=reading.humidity; r.pm25=reading.pm25;
+            r.flags=reading.flags; memcpy(r.values,reading.values,sizeof(r.values));
+            r.weight1_g=reading.weight1_g; r.weight2_g=reading.weight2_g;
+            r.valve_bits=reading.valve_bits; r.control_flags=reading.control_flags;
             xSemaphoreTake(lock,portMAX_DELAY);
             int64_t now=utc_ms();
             if (!anchor && zc_clock_ready && now>(int64_t)CLOCK_VALID_AFTER*1000) anchor=now-esp_timer_get_time()/1000;
@@ -158,13 +171,13 @@ static void upload_task(void *arg) {
         vTaskDelay(pdMS_TO_TICKS(1000));
         if (!storage_ready || !zc_config.provisioned || !zc_boot_ready || !zc_network_ready
                 || !zc_clock_ready || time(NULL)<=CLOCK_VALID_AFTER || esp_timer_get_time()/1000<retry_at) continue;
-        sample_t r; size_t size=sizeof(r); uint64_t order=0;
+        sample_t r; uint8_t raw[ZC_OUTBOX_PAYLOAD]; size_t size=sizeof(raw); uint64_t order=0;
         xSemaphoreTake(lock,portMAX_DELAY);
         int result=ZC_OUTBOX_FULL;
         for (unsigned skipped=0;skipped<64;skipped++) {
-            size=sizeof(r);
-            result=zc_outbox_next(&queue,cursor,&r,&size,&order);
-            if (result || size!=sizeof(r) || r.version!=1 || !memchr(r.device_id,0,sizeof(r.device_id))) break;
+            size=sizeof(raw);
+            result=zc_outbox_next(&queue,cursor,raw,&size,&order);
+            if (result || !zc_sample_decode(raw,size,&r)) break;
             if (strcmp(r.device_id,zc_config.device_id) || (!r.utc_ms && memcmp(r.boot,boot,sizeof(boot)))) {
                 cursor=order; result=ZC_OUTBOX_FULL; continue;
             }
@@ -172,11 +185,11 @@ static void upload_task(void *arg) {
         }
         if (result==ZC_OUTBOX_FULL) {
             /* Keep cursor while scanning retained untimed/other-device records. */
-            size_t probe_size=sizeof(r); uint64_t probe_order;
-            if (zc_outbox_next(&queue,cursor,&r,&probe_size,&probe_order)==ZC_OUTBOX_FULL) cursor=0;
+            size_t probe_size=sizeof(raw); uint64_t probe_order;
+            if (zc_outbox_next(&queue,cursor,raw,&probe_size,&probe_order)==ZC_OUTBOX_FULL) cursor=0;
             xSemaphoreGive(lock); continue;
         }
-        if (result || size!=sizeof(r) || r.version!=1 || (r.profile!=1 && r.profile!=2)) {
+        if (result || !zc_sample_decode(raw,size,&r)) {
             storage_ready=false; xSemaphoreGive(lock); ESP_LOGE(TAG,"Queue format/storage fault; no records erased"); continue;
         }
         if (!r.utc_ms) {
@@ -201,11 +214,9 @@ static void upload_task(void *arg) {
     }
 }
 bool zc_telemetry_healthy(void) {
-    if (strcmp(ZC_PROFILE,"inlet") && strcmp(ZC_PROFILE,"outlet")) return true;
     return storage_ready && sample_ticks>0;
 }
 void zc_telemetry_start(void) {
-    if (strcmp(ZC_PROFILE,"inlet") && strcmp(ZC_PROFILE,"outlet")) return;
     lock=xSemaphoreCreateMutex(); configASSERT(lock);
     esp_fill_random(boot,sizeof(boot));
     storage_ready=open_queue();

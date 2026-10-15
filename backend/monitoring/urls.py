@@ -1,13 +1,15 @@
 from django.urls import path
 from rest_framework.authtoken.views import obtain_auth_token
 
-from . import views, ota, release_registration, browser_auth, fleet, device_telemetry
+from . import views, ota, release_registration, browser_auth, fleet, device_telemetry, bench
 
 urlpatterns = [
     path('api/auth/session', browser_auth.session),
     path('api/auth/login', browser_auth.sign_in),
     path('api/auth/logout', browser_auth.sign_out),
     path('api/auth/socket-ticket', browser_auth.socket_ticket),
+    path('api/firmware/bench', bench.devices),
+    path('api/firmware/devices/<slug:device_id>/test-readings', bench.history),
     path('api/firmware/devices', fleet.devices),
     path('api/firmware/releases', fleet.releases),
     path('api/firmware/releases/<int:release_id>', fleet.enable_release),

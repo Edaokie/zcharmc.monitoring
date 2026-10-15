@@ -6,17 +6,21 @@ Use the [acceptance record](../docs/OTA_TEST_RECORD.md) to document real-board t
 
 The active PlatformIO environments use **ESP-IDF 6.0.1 and FreeRTOS**, pinned through
 Espressif32 7.0.1 / PlatformIO 6.1.19. There are three images: `inlet`, `outlet` and
-`control`. CMake explicitly builds only `src/idf/`; the old Arduino source and its
-configuration are reference-only and excluded, including legacy credentials.
+`control`. CMake explicitly builds the native C sources in `src/idf/`. The obsolete
+Arduino implementation, its configuration, placeholder drivers and tests have been
+removed. Wi-Fi credentials are supplied through private USB provisioning files and
+stored in NVS; they are not compiled into a configuration header.
 
 **Current scope is a bench OTA foundation.** These new images provide USB
 provisioning, Wi-Fi, authenticated HTTPS update polling/status, signed image
-verification, two OTA slots and boot rollback. Inlet/outlet now sample simulated
+verification, two OTA slots and boot rollback. All three roles now sample deterministic static
 values into a durable flash outbox and can upload them to an explicitly enabled
 Django test-data endpoint. Real sensor drivers and the real equipment cycle remain
-pending. See [Wi-Fi recovery and offline data preservation](../docs/FIRMWARE_WIFI_RECOVERY.md). Control stays in maintenance mode and
-drives the legacy output pins LOW; LOW is NOT established as safe for the actual
-actuators. Flash/test only with equipment disconnected until relay polarity,
+pending. Start with the [three-board static bench guide](../docs/FIRMWARE_STATIC_BENCH.md).
+See also [Wi-Fi recovery and offline data preservation](../docs/FIRMWARE_WIFI_RECOVERY.md).
+Control stays in maintenance mode; static builds do not configure or drive actuator
+GPIOs. Reset-time electrical states still depend on the board. Flash/test with
+equipment disconnected until relay polarity,
 boot-time pin states, wiring and local interlocks have been validated. Authorized staff can approve OTA through Django admin or the Firmware dashboard.
 
 ## Hardware assumptions and first installation
@@ -42,7 +46,28 @@ pio run -d firmware -e inlet -t upload --upload-port /dev/YOUR_SERIAL_PORT
 Use `outlet` or `control` for the corresponding board. Development images identify
 as `0.0.0-dev`; release builds get their version from the version tag. Never upload
 a CI `firmware.bin` alone to a board with an incompatible partition/bootloader.
-Do not use the legacy Arduino build environments.
+Only the `inlet`, `outlet` and `control` ESP-IDF environments are supported.
+
+## Source layout and future drivers
+
+- `src/idf/main.c`: ESP-IDF `app_main`, startup and FreeRTOS task coordination.
+- `src/idf/sensors.c` and `sensors.h`: current static adapter and measurement interface.
+- `src/idf/wifi.c`, `telemetry.c` and `outbox.c`: Wi-Fi recovery, acquisition,
+  authenticated uploads and persistent buffering.
+- `src/idf/config.c` and `ota.c`: USB provisioning and approved signed OTA.
+- `src/CMakeLists.txt` and `src/idf_component.yml`: native sources and dependencies.
+- `tests_host/`: executable native C recovery/static-adapter tests and Python OTA tests.
+
+Add future sensor drivers as ESP-IDF components under `components/<driver>/`, with
+their own `CMakeLists.txt`, then declare the dependencies in the application
+component and call them through the native adapter. Use ESP-IDF peripheral APIs
+and FreeRTOS tasks/synchronization. A library requiring `Arduino.h`, `setup()` or
+`loop()` is not a drop-in driver for this firmware.
+
+PlatformIO generates local IntelliSense/debug settings from `platformio.ini`.
+Machine-specific `.vscode/c_cpp_properties.json` and `launch.json` are ignored;
+regenerate the project index after switching environments rather than restoring
+the old Arduino include paths.
 
 ## Signing trust and GitHub setup (repository owner)
 
@@ -128,8 +153,9 @@ in NVS across application updates. USB provisioning is accepted only while the
 board is unprovisioned. Rotation or Wi-Fi changes currently require a deliberate
 USB NVS erase/reprovision, which also clears attempt history; do not erase NVS
 routinely during updates. NVS credentials are not encrypted in this bench setup.
-OTA/status credentials currently authenticate only device management, not the
-existing telemetry ingestion API. Native telemetry integration is separate work.
+The same per-device credential authenticates the opt-in simulated telemetry endpoint.
+This endpoint stores test records separately from research measurements; it does not
+authorize production ingestion or actuator commands.
 
 ## Register, approve and observe a release
 
@@ -152,8 +178,8 @@ key; it imports atomically and leaves them disabled. In the real Django admin
    an approval generation and approving staff user. Observe the reported version,
    status, maintenance flag and last-seen time before proceeding with outlet.
 3. Update control last, on the disconnected bench. The client requires maintenance
-   mode and LOW output feedback both before transfer and activation. There is no
-   dashboard button capable of approving or controlling these boards.
+   mode before transfer and activation. Static images do not configure output GPIOs.
+   The Firmware dashboard can approve updates; it cannot actuate equipment.
 4. To withdraw a target, clear its desired release or disable the release/device.
    This affects future polls; it cannot cancel an update already downloaded.
 5. After a failed boot, investigate the cause. To deliberately try the same target
@@ -172,7 +198,7 @@ A verified attempt's generation persists before boot selection so a rolled-back
 image is not automatically installed in a loop.
 
 On first boot the app waits three seconds for FreeRTOS local-health task progress,
-checks provisioning, free heap and (for control) LOW output readback/maintenance,
+checks provisioning, free heap, functioning acquisition/storage and maintenance,
 and confirms the pending image only if those checks pass. A reset before
 confirmation causes ESP-IDF rollback; explicit failed local checks request
 rollback. Cloud availability is not a local-health prerequisite. These are **bench

@@ -1,6 +1,5 @@
 #include "zc.h"
 #include <string.h>
-#include "driver/gpio.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -17,14 +16,11 @@
 #include "psa/crypto.h"
 #include "telemetry.h"
 
-// Preserve the existing pin map for bench inspection. Never run the legacy fake-pressure FSM.
+// Static bench images never run the legacy fake-pressure FSM or configure outputs.
 volatile bool zc_boot_ready = false;
 static volatile unsigned health_ticks;
-static const int outputs[] = {2,4,5,12,13,14,15,16,17};
 bool zc_control_health(void) {
-    if (strcmp(ZC_PROFILE,"control")) return true;
-    for (unsigned i=0;i<sizeof(outputs)/sizeof(outputs[0]);++i)
-        if (gpio_get_level(outputs[i]) != 0) return false;
+    // Static bench adapter does not configure or drive any actuator GPIO.
     return zc_maintenance;
 }
 
@@ -54,23 +50,16 @@ void app_main(void) {
     ESP_ERROR_CHECK(nvs_flash_init());
     zc_config_init();
     ESP_ERROR_CHECK(psa_crypto_init()==PSA_SUCCESS ? ESP_OK : ESP_FAIL);
-    if (!strcmp(ZC_PROFILE,"control")) {
-        uint64_t mask=0;
-        for (unsigned i=0;i<sizeof(outputs)/sizeof(outputs[0]);++i) mask |= 1ULL<<outputs[i];
-        gpio_config_t pins={.pin_bit_mask=mask,.mode=GPIO_MODE_INPUT_OUTPUT,.pull_up_en=GPIO_PULLUP_DISABLE,.pull_down_en=GPIO_PULLDOWN_DISABLE};
-        ESP_ERROR_CHECK(gpio_config(&pins));
-        for (unsigned i=0;i<sizeof(outputs)/sizeof(outputs[0]);++i) ESP_ERROR_CHECK(gpio_set_level(outputs[i],0));
-    }
     zc_status="pending";
     char attempt[32]={0}; size_t len=sizeof(attempt);
     if (nvs_get_str(zc_nvs,"attempt_ver",attempt,&len)==ESP_OK && strcmp(attempt,esp_app_get_description()->version)) zc_status="rolled_back";
-    ESP_LOGI("ZCharMC","Native ESP-IDF/FreeRTOS %s %s (%s)",ZC_PROFILE,esp_app_get_description()->version,ZC_HARDWARE);
+    ESP_LOGI("ZCharMC","STATIC BENCH (no actuator GPIO): ESP-IDF %s %s (%s)",ZC_PROFILE,esp_app_get_description()->version,ZC_HARDWARE);
     configASSERT(xTaskCreate(zc_serial_task,"provision",4096,NULL,2,NULL)==pdPASS);
     configASSERT(xTaskCreate(control_task,"local_health",3072,NULL,5,NULL)==pdPASS);
     configASSERT(xTaskCreate(zc_network_task,"cloud_ota",16384,NULL,2,NULL)==pdPASS);
     zc_wifi_start();
     zc_telemetry_start();
-    // Validate local task progress and maintenance outputs before accepting a pending image.
+    // Validate local task progress, storage and maintenance before accepting a pending image.
     vTaskDelay(pdMS_TO_TICKS(3000));
     bool healthy=zc_config.provisioned && health_ticks>10 && zc_control_health()
         && zc_telemetry_healthy() && esp_get_free_heap_size()>32768;

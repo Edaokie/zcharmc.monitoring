@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, FileText, Bell, LogOut, Cpu } from "lucide-react";
+import { LayoutDashboard, FileText, Bell, LogOut, Cpu, FlaskConical } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -56,6 +56,20 @@ export function Sidebar() {
           >
             <Cpu className="h-4 w-4" />
             <span className="sr-only sm:not-sr-only">Firmware</span>
+          </Link>
+        )}
+        {user?.can_manage_firmware && (
+          <Link
+            to="/bench"
+            className={cn(
+              "flex items-center gap-3 px-2 sm:px-3 py-2 rounded-sm text-sm",
+              path.startsWith("/bench")
+                ? "bg-muted font-semibold"
+                : "text-muted-foreground hover:bg-muted/60",
+            )}
+          >
+            <FlaskConical className="h-4 w-4" />
+            <span className="sr-only sm:not-sr-only">Bench simulation</span>
           </Link>
         )}
       </nav>

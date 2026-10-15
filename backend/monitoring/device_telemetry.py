@@ -7,8 +7,43 @@ from rest_framework.response import Response
 
 from .models import Device, DeviceTestReading
 from .ota import DevicePermission
-from .serializers import SensorPayloadSerializer
+from .serializers import SensorPayloadSerializer, FiniteFloatField
+from .contract import MAX_FUTURE_SECONDS
+from django.utils import timezone
+from datetime import timedelta
 from .services import MessageConflict
+
+
+class StrictFields(serializers.Serializer):
+    def to_internal_value(self, data):
+        if not isinstance(data, dict) or set(data) - set(self.fields):
+            raise serializers.ValidationError({'non_field_errors': ['Unexpected snapshot fields.']})
+        return super().to_internal_value(data)
+
+
+class BenchValves(StrictFields):
+    sv1 = serializers.BooleanField()
+    sv2 = serializers.BooleanField()
+    sv3 = serializers.BooleanField()
+    sv4 = serializers.BooleanField()
+
+
+class BenchWeights(StrictFields):
+    weight1 = FiniteFloatField(min_value=0, max_value=1000000000)
+    weight2 = FiniteFloatField(min_value=0, max_value=1000000000)
+
+
+class ControlSnapshot(StrictFields):
+    node_id = serializers.ChoiceField(choices=['control'])
+    message_id = serializers.CharField(max_length=128)
+    timestamp = serializers.DateTimeField()
+    valves = BenchValves()
+    weights = BenchWeights()
+
+    def validate_timestamp(self, value):
+        if value > timezone.now() + timedelta(seconds=MAX_FUTURE_SECONDS):
+            raise serializers.ValidationError('Measurement timestamp exceeds the future allowance.')
+        return value
 
 
 @api_view(['POST'])
@@ -20,7 +55,7 @@ def ingest(request, device_id):
         raise serializers.ValidationError('Expected an explicitly simulated reading envelope.')
     if not isinstance(data['reading'], dict):
         raise serializers.ValidationError('Expected a reading object.')
-    serializer = SensorPayloadSerializer(data=data['reading'])
+    serializer = (ControlSnapshot if request.ota_device.profile == 'control' else SensorPayloadSerializer)(data=data['reading'])
     serializer.is_valid(raise_exception=True)
     reading = dict(serializer.validated_data)
     if not reading.get('message_id') or 'timestamp' not in reading:
@@ -32,7 +67,7 @@ def ingest(request, device_id):
         if (not device.enabled or not device.allow_test_telemetry
                 or device.credential_hash != request.ota_device.credential_hash):
             raise PermissionDenied('Simulated telemetry is disabled for this device.')
-        if device.profile not in ('inlet', 'outlet') or reading['node_id'] != device.profile:
+        if reading['node_id'] != device.profile:
             raise PermissionDenied('The reading must match the authenticated device role.')
         record, created = DeviceTestReading.objects.get_or_create(
             device=device, message_id=reading['message_id'], defaults={'payload': reading})
