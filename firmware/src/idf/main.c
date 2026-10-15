@@ -15,6 +15,7 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "psa/crypto.h"
+#include "telemetry.h"
 
 // Preserve the existing pin map for bench inspection. Never run the legacy fake-pressure FSM.
 volatile bool zc_boot_ready = false;
@@ -88,6 +89,7 @@ void app_main(void) {
     configASSERT(xTaskCreate(zc_serial_task,"provision",4096,NULL,2,NULL)==pdPASS);
     configASSERT(xTaskCreate(control_task,"local_health",3072,NULL,5,NULL)==pdPASS);
     configASSERT(xTaskCreate(zc_network_task,"cloud_ota",16384,NULL,2,NULL)==pdPASS);
+    zc_telemetry_start();
     // Validate local task progress and maintenance outputs before accepting a pending image.
     vTaskDelay(pdMS_TO_TICKS(3000));
     bool healthy=zc_config.provisioned && health_ticks>10 && zc_control_health()
