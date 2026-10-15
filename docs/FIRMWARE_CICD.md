@@ -1,5 +1,10 @@
 # Firmware CI/CD
 
+For a step-by-step first installation and OTA test, start with
+[the beginner guide](OTA_BEGINNERS_GUIDE.md). Current readiness and test evidence
+are in [OTA_VERIFICATION.md](OTA_VERIFICATION.md); physical results belong in
+[the acceptance record](OTA_TEST_RECORD.md).
+
 Firmware pushes and pull requests run host tests and build `inlet`, `outlet` and
 `control`. Their unsigned bench artifacts are retained for 14 days.
 

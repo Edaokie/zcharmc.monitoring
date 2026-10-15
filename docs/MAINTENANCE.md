@@ -89,6 +89,9 @@ Update the relevant guide when behavior or configuration changes:
 | Backend setup, validation, units or API diagnostics | [Backend README](../backend/README.md) |
 | Hosting settings or future device upload contract | [Cloud setup](CLOUD_SETUP.md) |
 | Test commands or simulation behavior | [Test tools](../backend/tools/README.md) |
+| First OTA setup, USB provisioning, bench testing and recovery | [OTA beginner guide](OTA_BEGINNERS_GUIDE.md) |
+| Firmware release automation and owner configuration | [Firmware CI/CD](FIRMWARE_CICD.md) |
+| OTA readiness, software evidence and physical acceptance | [OTA verification](OTA_VERIFICATION.md), [test record](OTA_TEST_RECORD.md) |
 | Completed checks and outstanding verification | [Verification record](TELEMETRY_VERIFICATION.md) |
 
 Mark work as planned, implemented, tested or deployed according to the available

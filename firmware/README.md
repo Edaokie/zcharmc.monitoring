@@ -1,5 +1,9 @@
 # Native ESP-IDF firmware and approved OTA releases
 
+New to OTA? Start with the [beginner guide](../docs/OTA_BEGINNERS_GUIDE.md) for
+setup, first USB installation, a tagged release, device approval and troubleshooting.
+Use the [acceptance record](../docs/OTA_TEST_RECORD.md) to document real-board tests.
+
 The active PlatformIO environments use **ESP-IDF 6.0.1 and FreeRTOS**, pinned through
 Espressif32 7.0.1 / PlatformIO 6.1.19. There are three images: `inlet`, `outlet` and
 `control`. CMake explicitly builds only `src/idf/`; the old Arduino source and its

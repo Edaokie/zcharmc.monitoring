@@ -34,6 +34,9 @@ See the [firmware guide](firmware/README.md) before flashing any board. Deployin
 the web applications does not update ESP32 devices automatically.
 The [firmware CI/CD guide](docs/FIRMWARE_CICD.md) explains automatic signed release
 publication and Django registration, followed by staff approval of device updates.
+For first-time setup and a supervised bench test, start with the
+[OTA beginner guide](docs/OTA_BEGINNERS_GUIDE.md). Check the
+[OTA verification record](docs/OTA_VERIFICATION.md) before treating it as ready for use.
 
 ## Repository layout
 

@@ -1,5 +1,39 @@
 # OTA release foundation: local verification
 
+## Current readiness: 2026-10-15
+
+The CI/CD registration implementation is present in local commit `23b2c8e`.
+This is a candidate for controlled, disconnected bench deployment, not a final
+production or physically accepted OTA system. Current GitHub environment settings,
+the deployed backend commit, a tagged cloud run and physical ESP32 behavior were
+not verified in this documentation pass.
+
+Checks rerun on 2026-10-15:
+
+- All 39 backend tests passed using an isolated SQLite test database; Django
+  system checks passed and no model migrations were pending. This pass did not
+  repeat PostgreSQL testing.
+- All 10 firmware host tests passed, including signed-package verification,
+  registration retries, redirect refusal and credential handling. These tests
+  do not execute the ESP32 C application on hardware.
+- Firmware release and firmware CI workflows passed Actionlint 1.7.7 with its
+  optional ShellCheck/Pyflakes integrations disabled.
+- All three native profiles built earlier in this review on 2026-10-15; no C
+  source changed in this documentation pass. Builds are not physical acceptance.
+
+Open firmware findings from the source review remain: multi-key provisioning can
+be interrupted into a partially provisioned state; device-side backend origin
+validation is incomplete; and saving an attempt before boot selection can cause
+an ambiguous rollback report after a power interruption. No fix for these findings
+is claimed by the CI/CD or documentation work.
+
+Start with [the beginner guide](OTA_BEGINNERS_GUIDE.md), complete owner settings in
+[the CI/CD guide](FIRMWARE_CICD.md), and record physical results using
+[the acceptance template](OTA_TEST_RECORD.md). Confirm the exact LilyGO board
+variant against the current generic 4 MB build before any upload.
+
+## Historical verification: 2026-10-07
+
 Verified 2026-10-07 against the working-tree implementation. No GitHub release was
 published, no hosting configuration was changed, and no physical board was flashed.
 The frontend/mock login was unchanged. The cancelled telemetry soak remains a
