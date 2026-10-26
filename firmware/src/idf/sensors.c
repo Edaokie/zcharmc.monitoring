@@ -4,6 +4,7 @@
 #include "i2c_bus.h"
 #include "pms7003.h"
 #include "scd41.h"
+#include "aht25.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #endif
@@ -17,7 +18,7 @@ void zc_sensors_init(void) {
      * Readings below stay static fixtures until real drivers replace them. */
 #ifdef ESP_PLATFORM
     if (!strcmp(ZC_PROFILE,"control")) return; /* Control never configures these pins. */
-    if (zc_i2c_init()==ESP_OK) { zc_i2c_scan(); zc_scd41_init(); }
+    if (zc_i2c_init()==ESP_OK) { zc_i2c_scan(); zc_scd41_init(); zc_aht25_init(); }
     zc_pms_init();
 #endif
 }
@@ -46,6 +47,13 @@ static void log_raw(void) {
     }
     else if (warm) ESP_LOGW("SCD41","No CO2 value in the last 12 s (%s): check SCD41 wiring/power on the I2C bus",
                             sn ? "sensor started" : "sensor never started");
+    zc_aht25_reading_t th;
+    err=zc_aht25_latest(&th,12000); /* New value every 5 s; allow two missed periods. */
+    if (err==ESP_OK) {
+        const int t10=(int)(th.temperature_c*10.0f+(th.temperature_c<0 ? -0.5f : 0.5f)), h10=(int)(th.humidity_pct*10.0f+0.5f);
+        ESP_LOGI("AHT25","RAW (not uploaded) T=%s%d.%d C RH=%d.%d %% (official temp/RH)",
+                 t10<0 ? "-" : "",(t10<0 ? -t10 : t10)/10,(t10<0 ? -t10 : t10)%10,h10/10,h10%10);
+    } else if (warm) ESP_LOGW("AHT25","No temp/RH value in the last 12 s: check AHT25 wiring/power on the I2C bus");
 }
 #endif
 bool zc_sensors_read_all(zc_reading_t *out) {
