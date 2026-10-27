@@ -5,8 +5,8 @@ setup, first USB installation, a tagged release, device approval and troubleshoo
 Use the [acceptance record](../docs/OTA_TEST_RECORD.md) to document real-board tests.
 
 The active PlatformIO environments use **ESP-IDF 6.0.1 and FreeRTOS**, pinned through
-Espressif32 7.0.1 / PlatformIO 6.1.19. There are three images: `inlet`, `outlet` and
-`control`. CMake explicitly builds the native C sources in `src/idf/`. The obsolete
+Espressif32 7.0.1 / PlatformIO 6.1.19. There are three static images: `inlet`, `outlet` and
+`control`, plus the real-data images `inlet_real` and `outlet_real` (see below). CMake explicitly builds the native C sources in `src/idf/`. The obsolete
 Arduino implementation, its configuration, placeholder drivers and tests have been
 removed. Wi-Fi credentials are supplied through private USB provisioning files and
 stored in NVS; they are not compiled into a configuration header.
@@ -51,7 +51,9 @@ Only the `inlet`, `outlet` and `control` ESP-IDF environments are supported.
 ## Source layout and future drivers
 
 - `src/idf/main.c`: ESP-IDF `app_main`, startup and FreeRTOS task coordination.
-- `src/idf/sensors.c` and `sensors.h`: current static adapter and measurement interface.
+- `src/idf/sensors.c` and `sensors.h`: static and real-data adapters and the measurement interface.
+- `src/idf/i2c_bus.c`, `scd41.c`, `aht25.c`, `pms7003.c`: sensor drivers (shared I²C bus on
+  GPIO 21/22, UART2 on GPIO 16/17), each reading in its own task so sampling never waits.
 - `src/idf/wifi.c`, `telemetry.c` and `outbox.c`: Wi-Fi recovery, acquisition,
   authenticated uploads and persistent buffering.
 - `src/idf/config.c` and `ota.c`: USB provisioning and approved signed OTA.
@@ -63,6 +65,50 @@ their own `CMakeLists.txt`, then declare the dependencies in the application
 component and call them through the native adapter. Use ESP-IDF peripheral APIs
 and FreeRTOS tasks/synchronization. A library requiring `Arduino.h`, `setup()` or
 `loop()` is not a drop-in driver for this firmware.
+
+## Real-data mode (inlet and outlet sensors)
+
+The `inlet_real` and `outlet_real` environments (`ZC_DATA_MODE=2`) upload the SCD41 CO₂,
+the AHT25 temperature/relative humidity and the PMS7003 PM2.5 (atmospheric value) as
+research readings, using the [sensor upload contract](../docs/CLOUD_SETUP.md#sensor-upload-contract-for-the-later-firmware-change):
+`POST /api/ingest` with `Authorization: Bearer <INGEST_API_KEY>`, a flat JSON reading with
+`node_id`, the original UTC `timestamp` and a message ID `real-<role>-<boot ID>-<sequence>`
+that stays identical on retries. The static `inlet`, `outlet` and `control` images are
+unchanged; there is no real control image.
+
+```sh
+pio run -d firmware -e inlet_real -t upload --upload-port /dev/YOUR_SERIAL_PORT
+```
+
+A field is sent only when its sensor gave a fresh, successful measurement:
+
+| Field | Source | Sent only when |
+| --- | --- | --- |
+| `co2` | SCD41 (automatic self-calibration off, factory calibration) | newest value at most 12 s old |
+| `temperature`, `humidity` | AHT25 | newest value at most 12 s old and the start-up status showed the calibration bits (0x18) |
+| `pm25` | PMS7003 | valid frame at most 5 s old and at least 30 s after boot (fan settling) |
+
+Values outside `backend/monitoring/contract.py` are never queued (the server would reject
+them and block later uploads). `ph` and the process fields stay absent, never zero. A
+sample without any valid field is not stored. The SCD41's own temperature/RH, PM1.0 and
+PM10 are only logged.
+
+Each queue record carries its source. Real records go to `/api/ingest`; simulated records
+left by a static image still go to the device test endpoint. Firmware older than this
+change rejects real records (queue fault, nothing erased), so export the queue before
+flashing an older static image onto a board that ran a real image.
+
+**Ingest key.** Add `"ingest_key": "<current Railway INGEST_API_KEY>"` to the board's private
+provisioning JSON; it is optional for static images. It is stored in NVS, unencrypted like
+the Wi-Fi password. Without it real readings stay queued and the log says
+`NO ingest key`. Provisioning is accepted only while a board is unprovisioned, so for an
+already provisioned board: confirm the port by MAC address, optionally export the queue,
+erase **only** NVS (`esptool.py --port /dev/YOUR_SERIAL_PORT erase_region 0x9000 0x5000`;
+this clears provisioning and OTA attempt history, not the outbox at `0x350000`), then run
+`provision.py` with the same device ID, token and Wi-Fi settings plus `ingest_key`.
+Rotating `INGEST_API_KEY` on Railway requires repeating this on every real-mode board; this
+shared key is a prototype measure, and per-device credentials should replace it before a
+fleet deployment (backend README).
 
 PlatformIO generates local IntelliSense/debug settings from `platformio.ini`.
 Machine-specific `.vscode/c_cpp_properties.json` and `launch.json` are ignored;

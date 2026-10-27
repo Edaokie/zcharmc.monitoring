@@ -36,6 +36,7 @@ class StaticProfilesTests(unittest.TestCase):
                     partition = dump_outbox.FORMAT + bytes([255])*(4096-16) + record + bytes([255])*(4096-256)
                     rows = list(dump_outbox.decode(partition))
                     self.assertEqual(rows[0]['reading']['node_id'], role)
+                    self.assertEqual(rows[0]['source'], 'simulated')
                     self.assertEqual(rows[0]['device_id'], f'bench-{role}')
                     if role == 'control':
                         self.assertEqual(rows[0]['reading']['valves'], dict.fromkeys(('sv1','sv2','sv3','sv4'), False))

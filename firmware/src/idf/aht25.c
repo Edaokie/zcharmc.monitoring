@@ -31,6 +31,7 @@ static i2c_master_dev_handle_t dev;
 static portMUX_TYPE mux=portMUX_INITIALIZER_UNLOCKED;
 static zc_aht25_reading_t newest;
 static int64_t newest_ms; /* 0 = no reading yet. */
+static volatile bool calibrated; /* Status 0x18 bits seen; real mode needs it. */
 
 static void wait_ms(uint32_t ms) { vTaskDelay(pdMS_TO_TICKS(ms)+1); }
 
@@ -52,13 +53,17 @@ static esp_err_t measure(zc_aht25_reading_t *out) {
 static void aht25_task(void *arg) {
     (void)arg;
     wait_ms(100);                                  /* Datasheet: >=100 ms after power-up. */
-    uint8_t status=0; const uint8_t get_status=0x71;
-    if (i2c_master_transmit_receive(dev,&get_status,1,&status,1,100)==ESP_OK) {
-        if ((status&0x18)==0x18) ESP_LOGI(TAG,"Ready (status 0x%02X, calibrated), measuring every 5 s",status);
-        else ESP_LOGW(TAG,"Status 0x%02X: calibration bits not set; readings may be invalid (vendor reset routine needed)",status);
-    } else ESP_LOGW(TAG,"No answer to status request; will keep trying");
+    bool status_known=false;
     unsigned failures=0;
     for (;;) {
+        if (!status_known) { /* Retried each period until the sensor answers once. */
+            uint8_t status=0; const uint8_t get_status=0x71;
+            if (i2c_master_transmit_receive(dev,&get_status,1,&status,1,100)==ESP_OK) {
+                status_known=true; calibrated=(status&0x18)==0x18;
+                if (calibrated) ESP_LOGI(TAG,"Ready (status 0x%02X, calibrated), measuring every 5 s",status);
+                else ESP_LOGW(TAG,"Status 0x%02X: calibration bits not set; values are logged but never marked valid",status);
+            } else if (failures==0) ESP_LOGW(TAG,"No answer to status request; will keep trying");
+        }
         zc_aht25_reading_t r;
         esp_err_t err=measure(&r);
         if (err==ESP_OK) {
@@ -80,6 +85,8 @@ esp_err_t zc_aht25_init(void) {
     if (err!=ESP_OK) { dev=NULL; ESP_LOGE(TAG,"Init failed: %s",esp_err_to_name(err)); }
     return err;
 }
+
+bool zc_aht25_calibrated(void) { return calibrated; }
 
 esp_err_t zc_aht25_latest(zc_aht25_reading_t *out, int max_age_ms) {
     if (!dev) return ESP_ERR_INVALID_STATE;
