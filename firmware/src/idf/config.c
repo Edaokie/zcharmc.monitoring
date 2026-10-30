@@ -27,6 +27,7 @@ void zc_config_init(void) {
     read_string("backend", zc_config.backend, sizeof(zc_config.backend));
     read_string("ssid", zc_config.ssid, sizeof(zc_config.ssid));
     read_string("password", zc_config.password, sizeof(zc_config.password));
+    read_string("ingest_key", zc_config.ingest_key, sizeof(zc_config.ingest_key));
     zc_config.provisioned = zc_config.device_id[0] && zc_config.device_token[0] && zc_config.backend[0] && zc_config.ssid[0];
 }
 
@@ -63,6 +64,9 @@ void zc_serial_task(void *arg) {
                 && copy_field(json,"ssid",next.ssid,sizeof(next.ssid))
                 && copy_field(json,"password",next.password,sizeof(next.password))
                 && !strncmp(next.backend,"https://",8) && next.device_id[0] && next.device_token[0] && next.ssid[0];
+            /* Optional shared research ingestion key (real-data builds); absent = none. */
+            if (ok && cJSON_GetObjectItemCaseSensitive(json,"ingest_key"))
+                ok = copy_field(json,"ingest_key",next.ingest_key,sizeof(next.ingest_key)) && next.ingest_key[0];
             for (const char *p=next.device_id; *p; ++p)
                 if (!((*p>='a'&&*p<='z')||(*p>='A'&&*p<='Z')||(*p>='0'&&*p<='9')||*p=='_'||*p=='-')) ok=false;
             if (ok) {
@@ -71,12 +75,14 @@ void zc_serial_task(void *arg) {
                 if (err==ESP_OK) err=nvs_set_str(zc_nvs,"backend",next.backend);
                 if (err==ESP_OK) err=nvs_set_str(zc_nvs,"ssid",next.ssid);
                 if (err==ESP_OK) err=nvs_set_str(zc_nvs,"password",next.password);
+                if (err==ESP_OK && next.ingest_key[0]) err=nvs_set_str(zc_nvs,"ingest_key",next.ingest_key);
                 if (err==ESP_OK) err=nvs_commit(zc_nvs);
                 if (err==ESP_OK) { puts("ZC: provisioning saved; rebooting"); fflush(stdout); vTaskDelay(pdMS_TO_TICKS(200)); esp_restart(); }
             }
             puts("ZC: provisioning rejected");
         } else if (cJSON_IsString(command) && !strcmp(command->valuestring,"status")) {
-            printf("ZC: profile=%s hardware=%s provisioned=%d status=%s\n", ZC_PROFILE,ZC_HARDWARE,zc_config.provisioned,zc_status);
+            printf("ZC: profile=%s hardware=%s provisioned=%d ingest_key=%d status=%s\n", ZC_PROFILE,ZC_HARDWARE,
+                   zc_config.provisioned,zc_config.ingest_key[0]!=0,zc_status);
         } else {
             puts("ZC: unsupported command or already provisioned");
         }

@@ -1,6 +1,7 @@
 """Decode a read-only USB dump of the reserved flash queue to JSON lines.
 
-No credentials are read by this tool. Unsynchronized records retain timestamp=null,
+No credentials are read by this tool. Each row says whether it holds real sensor values
+or simulated fixtures. Unsynchronized records retain timestamp=null,
 boot ID and uptime; a missing UTC timestamp is never fabricated.
 """
 import argparse
@@ -41,14 +42,17 @@ def decode(content):
             version, flags, boot, seq, uptime, utc, *tail = SAMPLE_V1.unpack(raw)
             values, profile, reserved, identity = tail[:4], tail[4], tail[5], tail[6]
             names = ('co2', 'temperature', 'humidity', 'pm25')
-            valve_bits = control_flags = 0
+            valve_bits = control_flags = source = 0
             weights = ()
             if flags & ~15 or profile not in (1, 2):
                 raise ValueError('Invalid legacy sample.')
         elif len(raw) == SAMPLE_V2.size and struct.unpack_from('<I', raw)[0] == 2:
             version, flags, boot, seq, uptime, utc, *tail = SAMPLE_V2.unpack(raw)
             values, weights = tail[:12], tail[12:14]
-            profile, valve_bits, control_flags, reserved, identity = tail[14:]
+            profile, valve_bits, control_flags, source, identity = tail[14:]
+            if source not in (0, 1) or (source == 1 and profile == 3):
+                raise ValueError('Invalid v2 source.')
+            reserved = 0
             names = ('co2', 'temperature', 'humidity', 'ph', 'pm25', 'flow_rate', 'level', 'weight', 'no2', 'so2', 'pressure1', 'pressure2')
             if flags & ~4095 or valve_bits & ~15 or control_flags & ~7:
                 raise ValueError('Invalid v2 flags.')
@@ -57,7 +61,8 @@ def decode(content):
         if profile not in (1, 2, 3) or reserved or b'\0' not in identity or uptime < 0 or utc < 0:
             raise ValueError('Invalid sample identity/schema; preserve the dump.')
         role = {1: 'inlet', 2: 'outlet', 3: 'control'}[profile]
-        reading = {'node_id': role, 'message_id': f'test-{role}-{boot.hex()}-{seq}',
+        prefix = 'real' if source else 'test'
+        reading = {'node_id': role, 'message_id': f'{prefix}-{role}-{boot.hex()}-{seq}',
                    'timestamp': datetime.fromtimestamp(utc/1000, timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z') if utc else None}
         def rounded(value, scale=10):
             if not math.isfinite(value):
@@ -71,7 +76,7 @@ def decode(content):
                 raise ValueError('Incomplete control snapshot.')
             reading['valves'] = {f'sv{i+1}': bool(valve_bits & (1 << i)) for i in range(4)}
             reading['weights'] = {'weight1': rounded(weights[0]), 'weight2': rounded(weights[1])}
-        yield {'source': 'simulated', 'device_id': identity.split(b'\0')[0].decode('ascii'),
+        yield {'source': 'real' if source else 'simulated', 'device_id': identity.split(b'\0')[0].decode('ascii'),
                'boot_id': boot.hex(), 'sample_uptime_ms': uptime, 'queue_order': order, 'reading': reading}
 
 
@@ -88,7 +93,8 @@ def main():
                 stream.write(json.dumps(row, allow_nan=False) + '\n')
     except (OSError, ValueError) as error:
         parser.exit(1, f'Export failed: {error}\n')
-    print(f'Exported {len(rows)} pending simulated readings; original flash dump unchanged.')
+    real = sum(row['source'] == 'real' for row in rows)
+    print(f'Exported {len(rows)} pending readings ({real} real, {len(rows) - real} simulated); original flash dump unchanged.')
 
 
 if __name__ == '__main__':

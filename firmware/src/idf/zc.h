@@ -18,6 +18,7 @@ typedef struct {
     char backend[192];
     char ssid[33];
     char password[65];
+    char ingest_key[129]; /* Optional; only real-data builds use it (POST /api/ingest). */
     bool provisioned;
 } zc_config_t;
 extern zc_config_t zc_config;

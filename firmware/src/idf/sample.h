@@ -4,6 +4,12 @@
 #include <stdint.h>
 #include <string.h>
 /* v1 remains readable across OTA. Never reinterpret its four-field payload as v2. */
+/* v2 "source" (formerly a reserved zero word): 0 = simulated fixtures for the test
+ * endpoint, 1 = real sensor values for research /api/ingest. Old records read as 0.
+ * Firmware older than this rejects source 1 (queue fault, nothing erased): export the
+ * queue before downgrading a real-mode board. */
+#define ZC_SOURCE_SIMULATED 0u
+#define ZC_SOURCE_REAL 1u
 typedef struct {
     uint32_t version, flags; uint8_t boot[16]; uint64_t sequence;
     int64_t uptime_ms, utc_ms;
@@ -14,7 +20,7 @@ typedef struct {
     uint32_t version, flags; uint8_t boot[16]; uint64_t sequence;
     int64_t uptime_ms, utc_ms;
     float values[12], weight1_g, weight2_g;
-    uint32_t profile, valve_bits, control_flags, reserved;
+    uint32_t profile, valve_bits, control_flags, source;
     char device_id[72];
 } zc_sample_t;
 _Static_assert(sizeof(zc_sample_v1_t)==144,"Legacy layout must not change");
@@ -33,7 +39,8 @@ static inline bool zc_sample_decode(const void *raw,size_t size,zc_sample_t *out
         for (unsigned i=0;i<4;i++) if (old.flags&(1u<<i)) { out->flags|=1u<<positions[i]; out->values[positions[i]]=values[i]; }
     } else if (version==2 && size==sizeof(*out)) memcpy(out,raw,size);
     else return false;
-    return out->profile>=1 && out->profile<=3 && !out->reserved && !(out->flags&~4095u)
+    return out->profile>=1 && out->profile<=3 && out->source<=ZC_SOURCE_REAL
+        && !(out->source==ZC_SOURCE_REAL && out->profile==3) && !(out->flags&~4095u)
         && !(out->valve_bits&~15u) && !(out->control_flags&~7u)
         && memchr(out->device_id,0,sizeof(out->device_id)) && out->uptime_ms>=0 && out->utc_ms>=0;
 }
