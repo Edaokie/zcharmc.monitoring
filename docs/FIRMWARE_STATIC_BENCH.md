@@ -72,9 +72,11 @@ pio run -d firmware -e inlet -e outlet -e control
 python -m unittest discover -s firmware/tests_host -v
 ```
 
-`firmware/platformio.ini` explicitly selects `ZC_DATA_MODE=1`, the static adapter.
-Other data modes currently fail compilation so an unfinished hardware adapter
-cannot silently generate dummy research values.
+`firmware/platformio.ini` explicitly selects `ZC_DATA_MODE=1`, the static adapter, for
+`inlet`, `outlet` and `control`. The separate `inlet_real` and `outlet_real` environments
+select the real-data mode (`ZC_DATA_MODE=2`, see the firmware README); this bench guide
+uses the static images. Unknown data modes fail compilation so an unfinished hardware
+adapter cannot silently generate dummy research values.
 
 Connect **one board at a time** and replace `/dev/YOUR_SERIAL_PORT` below with its
 actual port (for example a macOS `/dev/cu.usbserial-…` port or Windows `COM3`).
@@ -169,8 +171,9 @@ use ESP-IDF APIs and FreeRTOS rather than depend on `Arduino.h`.
 Preserve the stable field units above and the backend contract in
 `backend/monitoring/contract.py`. Set validity flags only for successful, calibrated
 measurements. Add a separate real-data mode and reviewed production ingestion path
-before enabling it; the current path always says `source: simulated` and stores
-test data. Do not relabel a static image as live data by changing only the UI.
+before enabling it; the static path always says `source: simulated` and stores
+test data. The first real-data mode (SCD41, AHT25, PMS7003 on inlet and outlet, drivers
+in `src/idf/`) is described in the firmware README, "Real-data mode". Do not relabel a static image as live data by changing only the UI.
 
 Real control additionally needs a confirmed pin map, reset/relay polarity checks,
 safe startup, feedback, local interlocks, timing/state machine, fault handling and

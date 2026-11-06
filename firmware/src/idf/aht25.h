@@ -17,4 +17,6 @@ bool zc_aht25_decode(const uint8_t *raw, zc_aht25_reading_t *out);
 esp_err_t zc_aht25_init(void);
 /* Never blocks: copies the newest reading if it is at most max_age_ms old. */
 esp_err_t zc_aht25_latest(zc_aht25_reading_t *out, int max_age_ms);
+/* True once the start-up status showed the calibration bits (0x18). */
+bool zc_aht25_calibrated(void);
 #endif

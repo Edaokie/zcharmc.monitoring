@@ -69,17 +69,22 @@ static double rounded(float value,unsigned decimals) {
     double scale=decimals ? 10.0 : 1.0;
     return round((double)value*scale)/scale;
 }
+/* Simulated: {"source":"simulated","reading":{...}} for the device test endpoint.
+ * Real: the flat reading from docs/CLOUD_SETUP.md "Sensor upload contract" for
+ * POST /api/ingest. The message ID is unique per node across reboots (random boot ID)
+ * and identical on every retry, so the backend can deduplicate. */
 static char *payload(const sample_t *r,char id[96]) {
     char hex[33],timestamp[32];
+    const bool real=r->source==ZC_SOURCE_REAL;
     for (unsigned i=0;i<16;i++) snprintf(hex+2*i,3,"%02x",r->boot[i]);
     const char *profile=r->profile==1 ? "inlet" : r->profile==2 ? "outlet" : "control";
-    snprintf(id,96,"test-%s-%s-%llu",profile,hex,(unsigned long long)r->sequence);
+    snprintf(id,96,"%s-%s-%s-%llu",real ? "real" : "test",profile,hex,(unsigned long long)r->sequence);
     time_t seconds=(time_t)(r->utc_ms/1000); struct tm utc;
     gmtime_r(&seconds,&utc); strftime(timestamp,sizeof(timestamp),"%Y-%m-%dT%H:%M:%S",&utc);
     char exact[40]; snprintf(exact,sizeof(exact),"%s.%03uZ",timestamp,(unsigned)(r->utc_ms%1000));
-    cJSON *root=cJSON_CreateObject(),*reading=cJSON_CreateObject();
-    if (!root || !reading) { cJSON_Delete(root); cJSON_Delete(reading); return NULL; }
-    if (!cJSON_AddStringToObject(root,"source","simulated") || !cJSON_AddItemToObject(root,"reading",reading)) {
+    cJSON *root=cJSON_CreateObject(),*reading=real ? root : cJSON_CreateObject();
+    if (!root || !reading) { cJSON_Delete(root); if (!real) cJSON_Delete(reading); return NULL; }
+    if (!real && (!cJSON_AddStringToObject(root,"source","simulated") || !cJSON_AddItemToObject(root,"reading",reading))) {
         cJSON_Delete(reading); cJSON_Delete(root); return NULL;
     }
     bool ok=cJSON_AddStringToObject(reading,"node_id",profile)&&cJSON_AddStringToObject(reading,"message_id",id)
@@ -103,7 +108,8 @@ static char *payload(const sample_t *r,char id[96]) {
     char *json=ok ? cJSON_PrintUnformatted(root) : NULL;
     cJSON_Delete(root); return json;
 }
-typedef struct { char body[512]; size_t used; bool overflow; } reply_t;
+/* /api/ingest echoes the whole saved reading (~360 bytes in a local test); keep headroom. */
+typedef struct { char body[1024]; size_t used; bool overflow; } reply_t;
 static esp_err_t response_event(esp_http_client_event_t *event) {
     if (event->event_id==HTTP_EVENT_ON_DATA && event->data_len>0) {
         reply_t *r=event->user_data;
@@ -112,11 +118,39 @@ static esp_err_t response_event(esp_http_client_event_t *event) {
     }
     return ESP_OK;
 }
+/* The record may leave the queue only after the server committed exactly this reading:
+ * real   -> 201/200 {"data":{..."message_id":id...},"created":bool} (CLOUD_SETUP.md)
+ * simulated -> 201/200 {"accepted":true,"message_id":id,...} (device test endpoint) */
+static bool acknowledged(bool real,int status,const char *body,const char *id) {
+    if (status!=200 && status!=201) return false;
+    cJSON *ack=cJSON_Parse(body), *message=NULL; bool accepted=false;
+    if (real) {
+        cJSON *data=ack ? cJSON_GetObjectItemCaseSensitive(ack,"data") : NULL;
+        message=cJSON_IsObject(data) ? cJSON_GetObjectItemCaseSensitive(data,"message_id") : NULL;
+        accepted=cJSON_IsBool(cJSON_GetObjectItemCaseSensitive(ack,"created"));
+    } else {
+        message=ack ? cJSON_GetObjectItemCaseSensitive(ack,"message_id") : NULL;
+        accepted=cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(ack,"accepted"));
+    }
+    accepted=accepted && cJSON_IsString(message) && !strcmp(message->valuestring,id);
+    cJSON_Delete(ack);
+    return accepted;
+}
 static bool deliver(const sample_t *r) {
     char id[96],url[320],auth[160]; reply_t response={0};
+    const bool real=r->source==ZC_SOURCE_REAL;
+    if (real && !zc_config.ingest_key[0]) {
+        ESP_LOGE(TAG,"Real reading retained: no ingest key provisioned (see firmware/README.md, real-data mode)");
+        return false;
+    }
     char *body=payload(r,id); if (!body) return false;
-    snprintf(url,sizeof(url),"%s/api/devices/%s/telemetry",zc_config.backend,zc_config.device_id);
-    snprintf(auth,sizeof(auth),"Bearer %s",zc_config.device_token);
+    if (real) {
+        snprintf(url,sizeof(url),"%s/api/ingest",zc_config.backend);
+        snprintf(auth,sizeof(auth),"Bearer %s",zc_config.ingest_key);
+    } else {
+        snprintf(url,sizeof(url),"%s/api/devices/%s/telemetry",zc_config.backend,zc_config.device_id);
+        snprintf(auth,sizeof(auth),"Bearer %s",zc_config.device_token);
+    }
     esp_http_client_config_t config={.url=url,.crt_bundle_attach=esp_crt_bundle_attach,.timeout_ms=10000,
         .disable_auto_redirect=true,.event_handler=response_event,.user_data=&response};
     esp_http_client_handle_t client=esp_http_client_init(&config);
@@ -127,12 +161,10 @@ static bool deliver(const sample_t *r) {
     esp_http_client_set_post_field(client,body,strlen(body));
     esp_err_t err=esp_http_client_perform(client);
     int status=esp_http_client_get_status_code(client);
-    cJSON *ack=err==ESP_OK && !response.overflow && (status==200 || status==201) ? cJSON_Parse(response.body) : NULL;
-    cJSON *message=ack ? cJSON_GetObjectItemCaseSensitive(ack,"message_id") : NULL;
-    bool accepted=ack && cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(ack,"accepted"))
-        && cJSON_IsString(message) && !strcmp(message->valuestring,id);
-    if (!accepted) ESP_LOGW(TAG,"Upload unacknowledged (HTTP %d, %s); record retained",status,esp_err_to_name(err));
-    cJSON_Delete(ack); esp_http_client_cleanup(client); cJSON_free(body);
+    bool accepted=err==ESP_OK && !response.overflow && acknowledged(real,status,response.body,id);
+    if (!accepted) ESP_LOGW(TAG,"%s upload unacknowledged (HTTP %d, %s)%s; record retained",real ? "Real" : "Simulated",
+                            status,esp_err_to_name(err),real && status==403 ? ": ingest key rejected" : "");
+    esp_http_client_cleanup(client); cJSON_free(body);
     return accepted;
 }
 static void sample_task(void *arg) {
@@ -140,7 +172,8 @@ static void sample_task(void *arg) {
     TickType_t next=xTaskGetTickCount();
     for (;;) {
         if (!zc_config.provisioned) { xTaskDelayUntil(&next,pdMS_TO_TICKS(PERIOD_MS)); continue; }
-        sample_t r={.version=2,.profile=!strcmp(ZC_PROFILE,"inlet") ? 1 : !strcmp(ZC_PROFILE,"outlet") ? 2 : 3,.sequence=sequence++};
+        sample_t r={.version=2,.profile=!strcmp(ZC_PROFILE,"inlet") ? 1 : !strcmp(ZC_PROFILE,"outlet") ? 2 : 3,.sequence=sequence++,
+            .source=ZC_DATA_MODE==ZC_MODE_REAL ? ZC_SOURCE_REAL : ZC_SOURCE_SIMULATED};
         memcpy(r.device_id,zc_config.device_id,sizeof(zc_config.device_id));
         memcpy(r.boot,boot,sizeof(boot)); r.uptime_ms=esp_timer_get_time()/1000;
         zc_reading_t reading;
@@ -158,7 +191,7 @@ static void sample_task(void *arg) {
             size_t pending=queue.pending;
             if (queue.fault) storage_ready=false;
             xSemaphoreGive(lock);
-            if (result==ZC_OUTBOX_OK) ESP_LOGI(TAG,"SIMULATED sample persisted; queued=%u clock=%s",(unsigned)pending,r.utc_ms?"UTC":"boot uptime only");
+            if (result==ZC_OUTBOX_OK) ESP_LOGI(TAG,"%s sample persisted; queued=%u clock=%s",r.source ? "REAL" : "SIMULATED",(unsigned)pending,r.utc_ms?"UTC":"boot uptime only");
             else ESP_LOGE(TAG,"Sample NOT saved: %s; existing records retained",result==ZC_OUTBOX_FULL?"queue full":"storage fault");
         } else ESP_LOGW(TAG,"No valid sensor snapshot");
         sample_ticks++;
@@ -221,7 +254,9 @@ void zc_telemetry_start(void) {
     esp_fill_random(boot,sizeof(boot));
     storage_ready=open_queue();
     if (!storage_ready) { ESP_LOGE(TAG,"Outbox unavailable; existing data not formatted or discarded"); return; }
-    ESP_LOGI(TAG,"SIMULATED sensors, durable queue %u slots; backend test acceptance is opt-in",(unsigned)queue.slots);
+    if (ZC_DATA_MODE==ZC_MODE_REAL)
+        ESP_LOGI(TAG,"REAL sensors -> /api/ingest (%s), durable queue %u slots",zc_config.ingest_key[0] ? "ingest key present" : "NO ingest key: real readings stay queued",(unsigned)queue.slots);
+    else ESP_LOGI(TAG,"SIMULATED sensors, durable queue %u slots; backend test acceptance is opt-in",(unsigned)queue.slots);
     configASSERT(xTaskCreate(sample_task,"acquisition",4096,NULL,2,NULL)==pdPASS);
     configASSERT(xTaskCreate(upload_task,"telemetry_upload",12288,NULL,1,NULL)==pdPASS);
 }
