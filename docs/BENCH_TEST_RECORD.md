@@ -7,7 +7,7 @@ against the deployed Railway backend. Values are simulated fixtures
 sensor accuracy, wiring or control safety. The separate section
 [Sensor bench: raw readings](#sensor-bench-raw-readings-2026-10-26-to-27) records the first
 real-sensor checks; those values are logged on the serial console only and are not uploaded.
-The section [Real-data mode](#real-data-mode-2026-10-27-to-30) records the first real sensor
+The section [Real-data mode](#real-data-mode-2026-10-27-to-11-06) records the first real sensor
 readings uploaded to `POST /api/ingest` (stored as `Reading`) from the `feature/real-data-mode`
 branch build. OTA acceptance is recorded separately in
 [OTA_TEST_RECORD.md](OTA_TEST_RECORD.md).
@@ -18,7 +18,7 @@ No credentials, provisioning JSON, Wi-Fi names/passwords or tokens are recorded 
 
 | Field | Value |
 | --- | --- |
-| Tester / dates / timezone | Edrian Abilay / 2026-10-16 to 2026-10-30 / Asia/Manila (UTC+8); admin times are UTC |
+| Tester / dates / timezone | Edrian Abilay / 2026-10-16 to 2026-11-06 / Asia/Manila (UTC+8); admin times are UTC |
 | Firmware | `develop` at `709a7a6` ("prepared for static test"), USB `-t upload`, version `0.0.0-dev`. From Oct 26: branch builds of PR #4 and #5, merged on Oct 27 as `develop` `b670045` (same code as on the boards). From Oct 27: branch `feature/real-data-mode` at `555419c` (not yet merged), environments `inlet`/`outlet` (static) and `inlet_real`/`outlet_real` |
 | Toolchain | PlatformIO, native ESP-IDF 6.0.1; Firmware CI #23 on `709a7a6` passed |
 | Boards | 2 × 30-pin ESP32 DevKit (ESP-WROOM-32, CP2102 USB bridge), 4 MB flash |
@@ -115,7 +115,7 @@ Sensor observations:
   a frame inside sampling, missed the 3 s boot health check and silently disabled
   uploads. Slow sensors now run in their own tasks and sampling copies the newest value.
 
-## Real-data mode (2026-10-27 to 30)
+## Real-data mode (2026-10-27 to 11-06)
 
 Branch build of `feature/real-data-mode` (`555419c`, `ZC_DATA_MODE=2`). Real readings follow
 the "Sensor upload contract" in [CLOUD_SETUP.md](CLOUD_SETUP.md): flat JSON to
@@ -133,8 +133,34 @@ works, not sensor accuracy and not adsorption.
 | A | New static build reads existing v2 queue records (old `reserved` word is now `source`) | PASS (both) | Oct 27 | No storage fault; simulated uploads accepted after the recovery below |
 | B | `inlet_real`: NVS erase (`0x9000 0x5000`), reprovision with `ingest_key`, real readings accepted | PASS (inlet) | Oct 29 | Status before `provisioned=0 ingest_key=0` → `provisioning saved`; log `REAL sensors -> /api/ingest (ingest key present)`; `REAL sample persisted; queued=1 clock=UTC` every 15 s; no HTTP 403 |
 | C | Admin `Reading` rows and live dashboard | PASS (both) | Oct 29–30 | About 4 rows per minute per node; on Oct 30 inlet and outlet rows interleaved (e.g. outlet IDs 1292–1321, 03:12–03:15 UTC, CO₂ values equal to the serial log). Dashboard: inlet and outlet "Fresh", CO₂ and PM2.5 for both nodes |
-| D | Wi-Fi outage with real readings | PARTIAL | Oct 29 | Unplanned outage only: inlet rows for ~07:18–07:24 UTC were received late with their original measurement times. The planned two-minute outage test is still to run |
+| D | Wi-Fi outage and power cuts with real readings | PASS (both) | Oct 29, Nov 6 | Oct 29: unplanned outage, inlet rows ~07:18–07:24 UTC received late with original times. Nov 6: planned outages and two inlet power cuts; see below |
 | E | `outlet_real`: export and erase outbox, NVS erase, reprovision, real readings accepted | PASS (outlet) | Oct 30 | 481 simulated records exported, then `erase_region 0x350000 0xB0000`; status before `provisioned=0 ingest_key=0` → `provisioning saved`; AHT25 `0x18`; `REAL sample persisted` every 15 s; no HTTP 403 |
+
+### Stage D: Wi-Fi outage and power cuts (2026-11-06)
+
+Both boards on `inlet_real` / `outlet_real` (`feature/real-data-mode`). Outages made by
+turning off the iPhone hotspot's "Allow Others to Join"; the second hotspot with the same
+SSID was off.
+
+- **Outage, both boards (~08:50–09:00 UTC):** `Disconnected (reason=0/2/200)`, then
+  `reason=201` / `36` while the hotspot was off; retries backed off 2 → 4 → 9 → 16 → 35 →
+  60 s with a Wi-Fi driver restart after ~70 s; every reading persisted (outlet
+  `queued` 48 → 72); no reboot. The hotspot came back several times with a new BSSID each
+  time; the boards rejoined by SSID. An upload cut mid-handshake (`-0x004C`) logged
+  `record retained`. After reconnecting both queues drained back to their pre-test level
+  (inlet 1, outlet 48).
+- **Power cuts, inlet (~09:28–09:32 UTC):** hotspot off, USB unplugged, plugged in, hotspot
+  on; done twice. After each restart the queue still held the earlier readings
+  (`queued=2`, then `3`), and readings taken before Wi-Fi returned were stored as
+  `clock=boot uptime only`, then given UTC after `SNTP synchronized` in the same boot and
+  uploaded. A second upload cut mid-send (`-0x004E`) was retained and sent later.
+- **Admin check:** inlet IDs 5295–5321 match the serial log value by value (CO₂ 1234 …
+  1254 before cut 1; 1269, 1245, 1272 in boot B; 1221, 1223, 1220, 1219, 1218 measured
+  offline in boot C). Each reading appears once, including both interrupted uploads; the
+  only gap (no inlet rows at 09:29) is the time the board was unpowered. ID 5308
+  (`real-inlet-5b9e…-1`, first sample of boot C): timestamp 09:31, received 09:32,
+  CO₂ 1221, 24.7 °C, 44.8 %RH, PM2.5 empty (first sample < 30 s after boot, by design).
+  Outlet: four rows per minute through the outages.
 
 ### Incident: wrong builds flashed (2026-10-27)
 
@@ -158,9 +184,10 @@ works, not sensor accuracy and not adsorption.
   holds input while the serial task sleeps; the longer real-data line (~320 bytes) arrived
   corrupted and was refused. Sending 16-byte chunks 60 ms apart worked on both boards
   (`provision.py` updated in the `feature/real-data-mode` PR).
-- **Outlet `queued=2`, inlet `queued=1`:** the outlet most likely keeps one untimed record
-  from an earlier boot (kept for export by design); not yet confirmed by a dump. It does
-  not block new readings.
+- **Outlet keeps untimed records:** `queued=2` on Oct 30, `queued=48` on Nov 6 (inlet 1).
+  These are most likely readings from boots that ended before the clock was set (power
+  removed while offline), kept for USB export by design and skipped by uploads; not yet
+  confirmed by a dump. They do not block new readings (fewer than 64 retained).
 - **Inlet and outlet CO₂ differ in the same air:** e.g. ~1,090 vs ~1,010 ppm on Oct 30.
   The dashboard's adsorption efficiency is therefore not meaningful until the offset is
   measured and the gas actually passes through a column.
@@ -202,6 +229,6 @@ works, not sensor accuracy and not adsorption.
 | Static bench (inlet, outlet) | Accepted for continued bench development, tests 1–8 |
 | Not tested | Control board; test 10 on hardware; all OTA tests |
 | Sensor raw reading (inlet, outlet) | Accepted for bench development: SCD41, AHT25 and PMS7003 read on both nodes; merged as PR #4 and #5 |
-| Real-data mode (inlet, outlet) | Stages A, B, C, E passed on the branch build; stage D partial. Pending review of the `feature/real-data-mode` PR |
+| Real-data mode (inlet, outlet) | Stages A–E passed on the branch build (stage D completed Nov 6). Pending review of the `feature/real-data-mode` PR |
 | Open findings for the firmware maintainer | 4xx retried forever (head-of-line blocking); health stays "healthy" while uploads fail; no guard against a build role that differs from the provisioned role; watchdog warnings and slow drain from one TLS handshake per reading; full rescan of retained untimed records after every upload |
-| Next | Review and merge of the real-data PR; planned outage test with real readings (stage D); inlet/outlet side-by-side offset and the outlet CO₂ dip position-swap test; TLS connection reuse for the watchdog and drain findings; calibration against references |
+| Next | Review and merge of the real-data PR; inlet/outlet side-by-side offset and the outlet CO₂ dip position-swap test; TLS connection reuse for the watchdog and drain findings; calibration against references |
