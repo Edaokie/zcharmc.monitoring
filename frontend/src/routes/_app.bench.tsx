@@ -140,6 +140,14 @@ function BenchPage() {
                   : "Test uploads enabled"}
             </p>
             <p className="text-xs">Device status received: {when(device.last_seen)}</p>
+            <p className="text-sm">
+              Queue on device:{" "}
+              {device.reported_queue === null
+                ? "not reported (older firmware)"
+                : `${device.reported_queue}${
+                    device.reported_queue_capacity ? ` of ${device.reported_queue_capacity}` : ""
+                  } waiting`}
+            </p>
             {device.latest ? (
               <>
                 <p className="text-xs">

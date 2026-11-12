@@ -18,6 +18,9 @@ export interface BenchDevice {
   allow_test_telemetry: boolean;
   reported_version: string;
   last_seen: string | null;
+  /** Records waiting on the device at its last status report; null if not reported. */
+  reported_queue: number | null;
+  reported_queue_capacity: number | null;
   latest: BenchReading | null;
 }
 export const BENCH_FIELDS: [string, string, string][] = [

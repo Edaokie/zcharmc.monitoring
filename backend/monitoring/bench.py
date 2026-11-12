@@ -22,6 +22,7 @@ def devices(request):
         return dict(device_id=device.device_id, profile=device.profile, enabled=device.enabled,
                     allow_test_telemetry=device.allow_test_telemetry,
                     reported_version=device.reported_version, last_seen=device.last_seen,
+                    reported_queue=device.reported_queue, reported_queue_capacity=device.reported_queue_capacity,
                     latest=dict(payload=device.test_payload, received_at=device.test_received) if device.test_payload else None)
     return page(request, query, serialize)
 

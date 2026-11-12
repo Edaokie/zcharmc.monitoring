@@ -65,8 +65,8 @@ class DeviceAdmin(admin.ModelAdmin):
             FirmwareApproval.objects.create(device=device, release=device.desired_release,
                 generation=device.approval_generation, approved_by=request.user)
 
-    list_display = ["device_id", "profile", "reported_version", "desired_release", "reported_status", "maintenance", "last_seen", "allow_test_telemetry"]
-    readonly_fields = ["device_id", "profile", "hardware", "credential_hash", "approval_generation", "reported_version", "reported_status", "maintenance", "last_seen"]
+    list_display = ["device_id", "profile", "reported_version", "desired_release", "reported_status", "maintenance", "last_seen", "reported_queue", "allow_test_telemetry"]
+    readonly_fields = ["device_id", "profile", "hardware", "credential_hash", "approval_generation", "reported_version", "reported_status", "maintenance", "last_seen", "reported_queue", "reported_queue_capacity"]
 
     def has_add_permission(self, request):
         return False
