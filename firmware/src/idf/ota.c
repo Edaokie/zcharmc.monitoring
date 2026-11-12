@@ -16,6 +16,7 @@
 #include "psa/crypto.h"
 
 #include "release_key.h"
+#include "telemetry.h"
 static const char *TAG="OTA";
 
 static bool asset_url(const char *url) {
@@ -95,7 +96,11 @@ void zc_report(void) {
     char url[320],auth[160],body[256];
     snprintf(url,sizeof(url),"%s/api/devices/%s/report",zc_config.backend,zc_config.device_id);
     snprintf(auth,sizeof(auth),"Bearer %s",zc_config.device_token);
-    snprintf(body,sizeof(body),"{\"version\":\"%s\",\"status\":\"%s\",\"maintenance\":%s}",
+    unsigned queued=0,capacity=0;
+    if (zc_telemetry_queue(&queued,&capacity))
+        snprintf(body,sizeof(body),"{\"version\":\"%s\",\"status\":\"%s\",\"maintenance\":%s,\"queued\":%u,\"queue_capacity\":%u}",
+            esp_app_get_description()->version,zc_status,zc_maintenance?"true":"false",queued,capacity);
+    else snprintf(body,sizeof(body),"{\"version\":\"%s\",\"status\":\"%s\",\"maintenance\":%s}",
         esp_app_get_description()->version,zc_status,zc_maintenance?"true":"false");
     esp_http_client_config_t config={.url=url,.crt_bundle_attach=esp_crt_bundle_attach,.timeout_ms=10000,.disable_auto_redirect=true};
     esp_http_client_handle_t client=esp_http_client_init(&config);

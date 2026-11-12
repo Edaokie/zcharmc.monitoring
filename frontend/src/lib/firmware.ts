@@ -17,6 +17,8 @@ export interface FleetDevice {
   reported_status: string;
   maintenance: boolean;
   last_seen: string | null;
+  reported_queue: number | null;
+  reported_queue_capacity: number | null;
   contact: "never_seen" | "recent" | "stale";
   desired_release: FirmwareRelease | null;
   approval_generation: number;

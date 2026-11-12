@@ -92,6 +92,8 @@ class Device(models.Model):
     reported_status = models.CharField(max_length=32, blank=True)
     maintenance = models.BooleanField(default=False)
     last_seen = models.DateTimeField(null=True, blank=True)
+    reported_queue = models.PositiveIntegerField(null=True, blank=True, help_text="Records waiting on the device at its last status report (untimed records included).")
+    reported_queue_capacity = models.PositiveIntegerField(null=True, blank=True)
 
     def __str__(self):
         return self.device_id

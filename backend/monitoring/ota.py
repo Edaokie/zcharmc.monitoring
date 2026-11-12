@@ -88,6 +88,9 @@ class ReportSerializer(serializers.Serializer):
     version = serializers.CharField(max_length=31)
     status = serializers.ChoiceField(choices=["healthy", "pending", "updating", "rolled_back", "failed", "not_provisioned"])
     maintenance = serializers.BooleanField()
+    # Optional so firmware without queue reporting stays compatible.
+    queued = serializers.IntegerField(required=False, min_value=0, max_value=1000000)
+    queue_capacity = serializers.IntegerField(required=False, min_value=0, max_value=1000000)
 
 
 @api_view(["POST"])
@@ -102,5 +105,6 @@ def report(request, device_id):
     if (device.reported_version, device.reported_status, device.maintenance) != (data['version'], data['status'], data['maintenance']):
         DeviceReport.objects.create(device=device, version=data['version'], status=data['status'], maintenance=data['maintenance'])
     Device.objects.filter(pk=device.pk).update(reported_version=data["version"],
-        reported_status=data["status"], maintenance=data["maintenance"], last_seen=timezone.now())
+        reported_status=data["status"], maintenance=data["maintenance"], last_seen=timezone.now(),
+        reported_queue=data.get("queued"), reported_queue_capacity=data.get("queue_capacity"))
     return private(Response({"ok": True}))

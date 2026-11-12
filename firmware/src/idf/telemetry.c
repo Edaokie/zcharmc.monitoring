@@ -246,6 +246,14 @@ static void upload_task(void *arg) {
         }
     }
 }
+bool zc_telemetry_queue(unsigned *queued, unsigned *capacity) {
+    if (!lock || !queue.slots) return false;
+    xSemaphoreTake(lock,portMAX_DELAY);
+    *queued=(unsigned)queue.pending;
+    *capacity=(unsigned)(queue.slots>RESERVE_SLOTS ? queue.slots-RESERVE_SLOTS : 0);
+    xSemaphoreGive(lock);
+    return true;
+}
 bool zc_telemetry_healthy(void) {
     return storage_ready && sample_ticks>0;
 }

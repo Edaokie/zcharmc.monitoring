@@ -115,6 +115,26 @@ class OtaTests(TestCase):
         self.device.save()
         self.assertEqual(self.client.get(self.url).status_code, 403)
 
+    def test_report_queue_depth_optional_and_validated(self):
+        report = '/api/devices/inlet-01/report'
+        base = {'version': '1.2.3', 'status': 'healthy', 'maintenance': False}
+        response = self.client.post(report, dict(base, queued=48, queue_capacity=2784), format='json')
+        self.assertEqual(response.status_code, 200)
+        self.device.refresh_from_db()
+        self.assertEqual((self.device.reported_queue, self.device.reported_queue_capacity), (48, 2784))
+        # Firmware without queue reporting stays accepted; the stale value is cleared, not kept.
+        self.assertEqual(self.client.post(report, base, format='json').status_code, 200)
+        self.device.refresh_from_db()
+        self.assertIsNone(self.device.reported_queue)
+        self.assertIsNone(self.device.reported_queue_capacity)
+        for bad in ({'queued': -1}, {'queued': 'many'}, {'queue_capacity': -5}):
+            self.assertEqual(self.client.post(report, dict(base, **bad), format='json').status_code, 400)
+        # A changing queue alone must not grow the status-change history.
+        from monitoring.models import DeviceReport
+        before = DeviceReport.objects.filter(device=self.device).count()
+        self.client.post(report, dict(base, queued=49, queue_capacity=2784), format='json')
+        self.assertEqual(DeviceReport.objects.filter(device=self.device).count(), before)
+
     def test_provisioning_files_and_rotation(self):
         with tempfile.TemporaryDirectory() as directory:
             first = Path(directory) / 'first.json'

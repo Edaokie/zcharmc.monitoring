@@ -58,6 +58,18 @@ class BenchTests(TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response['Cache-Control'], 'private, no-store')
 
+    def test_bench_shows_reported_queue(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer control-token')
+        response = self.client.post('/api/devices/bench-control/report',
+            dict(version='0.0.0-dev', status='healthy', maintenance=False, queued=12, queue_capacity=2784), format='json')
+        self.assertEqual(response.status_code, 200)
+        self.client.credentials()
+        self.client.force_authenticate(self.staff)
+        row = self.client.get('/api/firmware/bench').json()['results'][0]
+        self.assertEqual((row['reported_queue'], row['reported_queue_capacity']), (12, 2784))
+        fleet = self.client.get('/api/firmware/devices').json()['results'][0]
+        self.assertEqual(fleet['reported_queue'], 12)
+
     def test_latest_received_history_pagination_and_no_credential_leak(self):
         self.assertEqual(self.ingest().status_code, 201)
         # An older measurement received later must be shown with both timestamps.
@@ -71,6 +83,7 @@ class BenchTests(TestCase):
         rows = response.json()['results']
         self.assertEqual(rows[0]['latest']['payload']['message_id'], 'older')
         self.assertIsNone(rows[1]['latest'])
+        self.assertIsNone(rows[0]['reported_queue'])
         self.assertNotIn('credential', str(rows))
         url = '/api/firmware/devices/bench-control/test-readings'
         self.assertEqual(self.client.get(url).json()['results'][0]['message_id'], 'older')

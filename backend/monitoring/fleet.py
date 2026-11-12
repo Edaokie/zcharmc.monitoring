@@ -44,7 +44,8 @@ def device_data(device):
     return dict(device_id=device.device_id, profile=device.profile, hardware=device.hardware,
                 enabled=device.enabled, reported_version=device.reported_version,
                 reported_status=device.reported_status, maintenance=device.maintenance,
-                last_seen=device.last_seen,
+                last_seen=device.last_seen, reported_queue=device.reported_queue,
+                reported_queue_capacity=device.reported_queue_capacity,
                 contact='never_seen' if age is None else 'recent' if age < 180 else 'stale',
                 desired_release=release_data(device.desired_release),
                 approval_generation=device.approval_generation)
