@@ -234,18 +234,47 @@ uploads failed with HTTP 404 and readings stayed queued during that time.
 
 ### Room test: AC room and room without AC (2026-11-16)
 
-Both boards side by side, same height, on good cables; results to be added after the
-CSV analysis.
+Both boards side by side, same height, on good cables. Data: CSV export from Reports
+(both nodes, 10:11–17:15 Manila; the combined export equals the two per-node exports).
 
 | Block | Time (Manila) | Note |
 | --- | --- | --- |
 | 1: room with AC | ~10:40–12:00 | `queued=1`, uploads every 15 s, no errors |
-| Move | ~12:00–14:08 | Boards unplugged |
-| 2: room without AC | 14:08–17:14 | Hotspot not found at first (`reason=201`); Wi-Fi back ~14:12 after a phone restart, clock set ~14:13, all readings of that boot timed and uploaded. One earlier boot in the new room ended before the clock was set: ~9 (inlet) and ~10 (outlet) untimed records kept |
+| Move | 12:01–14:08 | Boards unplugged (gap in the data, expected) |
+| 2: room without AC | 14:08–17:14 | Hotspot not found at first (`reason=201`); Wi-Fi back ~14:12 after a phone restart, clock set ~14:13, all readings of that boot timed and uploaded. One earlier boot in the new room ended before the clock was set: ~9 untimed records per board kept on the boards |
 
-Observations so far: block 1 about 25–26 °C, 43–46 %RH, CO₂ ~1,600–1,740 ppm, PM2.5
-2–8 µg/m³; block 2 about 30.5 °C, 71 %RH, CO₂ ~470 ppm, PM2.5 ~30 µg/m³ (the PMS7003 can
-read high at this humidity). PM2.5 of the two nodes agreed within ±1 µg/m³ in the same air.
+**Completeness (per node):** block 1 320 of 320 expected readings, block 2 744 of 744;
+interval 15.0 s; no duplicate timestamps; PM2.5 present in every row. The only gaps are
+the planned move (12:01–14:08) and, on the outlet only, 09:08–10:09 (before the test,
+during the cable swap and queue cleanup).
+
+**Values (settled part: 10:55–12:00 and 14:23–17:14; mean, range):**
+
+| Quantity | Block 1 inlet | Block 1 outlet | Block 2 inlet | Block 2 outlet |
+| --- | --- | --- | --- | --- |
+| CO₂ (ppm) | 1,496 (1,273–1,741) | 1,436 (1,204–1,694) | 433 (405–476) | 382 (357–422) |
+| Temperature (°C) | 25.3 | 25.9 | 30.6 | 30.7 |
+| Humidity (%RH) | 45.3 | 44.9 | 70.5 | 70.4 |
+| PM2.5 (µg/m³) | 5.3 (2–14) | 5.7 (3–16) | 240 (30–470) | 230 (30–459) |
+
+**Inlet − outlet, paired readings in the same air:** CO₂ +59 ppm (sd 10) in block 1 and
++51 ppm (sd 6) in block 2, i.e. a steady offset of about +50 ppm independent of the room;
+temperature −0.6 °C (block 1) and 0.0 °C (block 2); humidity +0.2 to +0.5 %RH; PM2.5 −0.4
+and +9 µg/m³ (about 4 % at ~230 µg/m³).
+
+**Observations:**
+- **CO₂ rose in the AC room** from ~1,250 to ~1,740 ppm over 80 minutes (closed room with
+  people); both nodes followed the same curve.
+- **Room without AC near outdoor air:** inlet ~433 ppm is close to typical fresh outdoor
+  air (~420–430 ppm); the outlet's ~382 ppm is lower than outdoor air can be, so the outlet
+  SCD41 most likely reads about 40–50 ppm low. To be confirmed against a reference
+  (or a forced recalibration in fresh outdoor air) before inlet/outlet differences are used.
+- **PM2.5 event in block 2:** from ~14:30 both nodes rose together to 300–470 µg/m³
+  (maximum 470 at 14:35), then fell to ~100 by 17:00. Both sensors agreed within ~4 %, so
+  this is a real change in the room air (source not recorded), not a sensor fault; the
+  ~70 %RH may add a small positive bias.
+- **Temperature offset only in the AC room:** −0.6 °C inlet vs outlet with AC, 0.0 °C without;
+  most likely position relative to the AC airflow.
 
 ### Perfboard observations
 
@@ -290,4 +319,5 @@ read high at this humidity). PM2.5 of the two nodes agreed within ±1 µg/m³ in
 | Real-data mode (inlet, outlet) | Stages A–E passed (stage D completed Nov 6); merged as PR #6 on Nov 6 |
 | Perfboard and queue depth (inlet, outlet) | P5 passed on both; P6 passed on the outlet, inlet passed on a good cable (C1); queue depth on `/bench` (PR #8) accepted |
 | Open findings for the firmware maintainer | 4xx retried forever (head-of-line blocking); health stays "healthy" while uploads fail; no guard against a build role that differs from the provisioned role; watchdog warnings and slow drain from one TLS handshake per reading; full rescan of retained untimed records after every upload |
-| Next | AC room test analysis (offset and room comparison); PM1.0/PM10 upload (needs a new queue record version); TLS connection reuse, CPU 240 MHz and the rescan cursor fix for the watchdog and drain findings; calibration against references |
+| Room test (Nov 16) | Both nodes 100 % complete in both blocks, no duplicates; CO₂ inlet − outlet ≈ +50 ppm in both rooms |
+| Next | Confirm the CO₂ offset against a reference (outlet likely ~40–50 ppm low); PM1.0/PM10 upload (needs a new queue record version); TLS connection reuse, CPU 240 MHz and the rescan cursor fix for the watchdog and drain findings; calibration against references |
