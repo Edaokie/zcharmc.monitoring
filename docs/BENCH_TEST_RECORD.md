@@ -9,7 +9,8 @@ sensor accuracy, wiring or control safety. The separate section
 real-sensor checks; those values are logged on the serial console only and are not uploaded.
 The section [Real-data mode](#real-data-mode-2026-10-27-to-11-06) records the first real sensor
 readings uploaded to `POST /api/ingest` (stored as `Reading`) from the `feature/real-data-mode`
-branch build. OTA acceptance is recorded separately in
+branch build. The section [Perfboard, queue depth and maintenance](#perfboard-queue-depth-and-maintenance-2026-11-10-to-11-16)
+records the soldered perfboard build, the queue depth on `/bench` and the first room tests. OTA acceptance is recorded separately in
 [OTA_TEST_RECORD.md](OTA_TEST_RECORD.md).
 
 No credentials, provisioning JSON, Wi-Fi names/passwords or tokens are recorded here.
@@ -18,14 +19,14 @@ No credentials, provisioning JSON, Wi-Fi names/passwords or tokens are recorded 
 
 | Field | Value |
 | --- | --- |
-| Tester / dates / timezone | Edrian Abilay / 2026-10-16 to 2026-11-06 / Asia/Manila (UTC+8); admin times are UTC |
-| Firmware | `develop` at `709a7a6` ("prepared for static test"), USB `-t upload`, version `0.0.0-dev`. From Oct 26: branch builds of PR #4 and #5, merged on Oct 27 as `develop` `b670045` (same code as on the boards). From Oct 27: branch `feature/real-data-mode` at `555419c` (not yet merged), environments `inlet`/`outlet` (static) and `inlet_real`/`outlet_real` |
+| Tester / dates / timezone | Edrian Abilay / 2026-10-16 to 2026-11-16 / Asia/Manila (UTC+8); admin times are UTC |
+| Firmware | `develop` at `709a7a6` ("prepared for static test"), USB `-t upload`, version `0.0.0-dev`. From Oct 26: branch builds of PR #4 and #5, merged on Oct 27 as `develop` `b670045` (same code as on the boards). From Oct 27: branch `feature/real-data-mode` at `555419c` (not yet merged), environments `inlet`/`outlet` (static) and `inlet_real`/`outlet_real`. From Nov 12: `develop` `5231f99` (PR #8, queue depth on `/bench`), environments `inlet_real`/`outlet_real` |
 | Toolchain | PlatformIO, native ESP-IDF 6.0.1; Firmware CI #23 on `709a7a6` passed |
 | Boards | 2 × 30-pin ESP32 DevKit (ESP-WROOM-32, CP2102 USB bridge), 4 MB flash |
 | Device IDs / roles | `inlet-01` / inlet, `outlet-01` / outlet. `control-01` **not tested** |
 | Network | 2.4 GHz phone hotspot (main), second phone hotspot with the same SSID for the no-internet test |
 | Backend | Railway production; devices enabled with **Allow test telemetry**. Real-data stages: `POST /api/ingest` with the shared ingest key (new value set on Railway on 2026-10-29, before stage B) |
-| Equipment | Oct 16–20: no sensors, actuators or relays. From Oct 26: per node one SCD41 (CO₂), one AHT25 (temperature/RH) and one PMS7003 (PM); no actuators or relays |
+| Equipment | Oct 16–20: no sensors, actuators or relays. From Oct 26: per node one SCD41 (CO₂), one AHT25 (temperature/RH) and one PMS7003 (PM); no actuators or relays. From Nov 10: both nodes soldered on one perfboard (two identical halves) instead of breadboards |
 
 ## Results
 
@@ -199,6 +200,92 @@ SSID was off.
   plots the inlet only, and the time labels of some charts are wrong (e.g. dates up to
   the next day, or a 3-second span for 1.5 minutes of points) while the values are correct.
 
+## Perfboard, queue depth and maintenance (2026-11-10 to 11-16)
+
+Both nodes moved from breadboards to one soldered perfboard (two identical halves, same
+pin map). From Nov 12 the boards run `develop` `5231f99`, which also reports the queue
+depth to `/bench`. Railway was stopped from about Nov 10 to Nov 12 (trial ended), so
+uploads failed with HTTP 404 and readings stayed queued during that time.
+
+| # | Test | Result | Date | Evidence / observation |
+| --- | --- | --- | --- | --- |
+| P5 | Perfboard firmware checks: I²C scan, AHT25 status, SCD41 start, PMS frames | PASS (both) | Nov 11 | 0x38 and 0x62 found on both halves; AHT25 `0x18`; SCD41 serials as before; valid PMS frames after re-soldering the outlet PMS connector (before: `0 bytes`, then unreadable frames from an intermittent contact) |
+| P6 | Untouched run, all sensors | PASS (outlet), see C1 (inlet) | Nov 11, Nov 16 | Outlet ~32 min without errors on Nov 11. Inlet: brownout restarts at Wi-Fi start (see C1); on a good cable ~13 min with PMS without errors on Nov 16 |
+| Q1 | Queue depth reported by the boards and shown on `/bench` | PASS (both) | Nov 12 | Both boards flashed (MAC checked). After the merge, migration 0007 was missing on Railway: `/bench`, the Firmware page, admin Devices, `/report` and `/ota` returned HTTP 500 (`column … reported_queue does not exist`); `/api/ingest` kept returning 201. Cause: empty Pre-deploy Command in the Railway service settings. After setting `python manage.py migrate --noinput` and redeploying: `0007 … OK`, `/report` 200. `/bench` showed 539 and 626 of 2784 waiting, matching the serial logs |
+| C1 | USB cable swap: inlet brownouts | Cause found | Nov 16 | Inlet looped on `E BOD: Brownout detector was triggered` at Wi-Fi start (`phy_init`) or during uploads when its PMS was connected; without PMS it ran. Swapping cables: inlet with PMS on the outlet's cable ran ~13 min without brownout; the outlet on the inlet's old cable lost USB twice (`Device not configured`). The worn cable was retired |
+| M1 | Queue export and outbox erase (both) | Done | Nov 16 | See below |
+
+### Queue maintenance (2026-11-12 and 11-16)
+
+- **Slow drain from untimed records:** boots on Nov 10–11 that ended before the clock was
+  set left several hundred untimed records at the front of each queue. Uploads took
+  ~12.5 s each instead of ~7 s (rescan of at most 64 records per 1 s pass after every
+  upload), so the timed backlog barely drained.
+- **Read-only export, Nov 12:** inlet 514 records (320 untimed), outlet 596 (374 untimed,
+  1 simulated).
+- **Export and erase, Nov 16 (both on good cables, MAC checked):** `read_flash 0x350000 0xB0000`
+  → `dump_outbox.py` → `erase_region 0x350000 0xB0000` (NVS untouched). Outlet 611 records
+  (402 untimed, 1 simulated); inlet 576 (366 untimed). About 210 timed readings per board
+  were not uploaded; they are kept only in the private exports. After the erase both
+  boards showed `queued=1` and ~4–5 s from measurement to accepted upload.
+- **Admin → Ingestion status (Nov 16, ~01:47 UTC):** inlet 5,349 accepted / 7 duplicates,
+  outlet 4,465 / 2; 0 conflicts, invalid, unauthorized or server errors. Duplicates are
+  resent readings whose acknowledgement was lost; no row is stored twice.
+
+### Room test: AC room and room without AC (2026-11-16)
+
+Both boards side by side, same height, on good cables. Data: CSV export from Reports
+(both nodes, 10:11–17:15 Manila; the combined export equals the two per-node exports).
+
+| Block | Time (Manila) | Note |
+| --- | --- | --- |
+| 1: room with AC | ~10:40–12:00 | `queued=1`, uploads every 15 s, no errors |
+| Move | 12:01–14:08 | Boards unplugged (gap in the data, expected) |
+| 2: room without AC | 14:08–17:14 | Hotspot not found at first (`reason=201`); Wi-Fi back ~14:12 after a phone restart, clock set ~14:13, all readings of that boot timed and uploaded. One earlier boot in the new room ended before the clock was set: ~9 untimed records per board kept on the boards |
+
+**Completeness (per node):** block 1 320 of 320 expected readings, block 2 744 of 744;
+interval 15.0 s; no duplicate timestamps; PM2.5 present in every row. The only gaps are
+the planned move (12:01–14:08) and, on the outlet only, 09:08–10:09 (before the test,
+during the cable swap and queue cleanup).
+
+**Values (settled part: 10:55–12:00 and 14:23–17:14; mean, range):**
+
+| Quantity | Block 1 inlet | Block 1 outlet | Block 2 inlet | Block 2 outlet |
+| --- | --- | --- | --- | --- |
+| CO₂ (ppm) | 1,496 (1,273–1,741) | 1,436 (1,204–1,694) | 433 (405–476) | 382 (357–422) |
+| Temperature (°C) | 25.3 | 25.9 | 30.6 | 30.7 |
+| Humidity (%RH) | 45.3 | 44.9 | 70.5 | 70.4 |
+| PM2.5 (µg/m³) | 5.3 (2–14) | 5.7 (3–16) | 240 (30–470) | 230 (30–459) |
+
+**Inlet − outlet, paired readings in the same air:** CO₂ +59 ppm (sd 10) in block 1 and
++51 ppm (sd 6) in block 2, i.e. a steady offset of about +50 ppm independent of the room;
+temperature −0.6 °C (block 1) and 0.0 °C (block 2); humidity +0.2 to +0.5 %RH; PM2.5 −0.4
+and +9 µg/m³ (about 4 % at ~230 µg/m³).
+
+**Observations:**
+- **CO₂ rose in the AC room** from ~1,250 to ~1,740 ppm over 80 minutes (closed room with
+  people); both nodes followed the same curve.
+- **Room without AC near outdoor air:** inlet ~433 ppm is close to typical fresh outdoor
+  air (~420–430 ppm); the outlet's ~382 ppm is lower than outdoor air can be, so the outlet
+  SCD41 most likely reads about 40–50 ppm low. To be confirmed against a reference
+  (or a forced recalibration in fresh outdoor air) before inlet/outlet differences are used.
+- **PM2.5 event in block 2:** from ~14:30 both nodes rose together to 300–470 µg/m³
+  (maximum 470 at 14:35), then fell to ~100 by 17:00. Both sensors agreed within ~4 %, so
+  this is a real change in the room air (source not recorded), not a sensor fault; the
+  ~70 %RH may add a small positive bias.
+- **Temperature offset only in the AC room:** −0.6 °C inlet vs outlet with AC, 0.0 °C without;
+  most likely position relative to the AC airflow.
+
+### Perfboard observations
+
+- **A worn USB cable can look like a board fault:** voltage drop under the Wi-Fi current
+  burst (brownout) and random USB drops. Swap cables before suspecting the board.
+- **Start-up without the hotspot creates untimed records** if the board restarts before
+  the clock is set. Turn the hotspot on before plugging in, and do not restart a board
+  until it is online.
+- **Port names change after every replug;** the MAC check before each upload, export and
+  erase caught swapped monitor windows twice.
+
 ## Other observations
 
 - **Bad USB cable:** repeated `Device not configured`, changing port names, reboots and
@@ -229,6 +316,8 @@ SSID was off.
 | Static bench (inlet, outlet) | Accepted for continued bench development, tests 1–8 |
 | Not tested | Control board; test 10 on hardware; all OTA tests |
 | Sensor raw reading (inlet, outlet) | Accepted for bench development: SCD41, AHT25 and PMS7003 read on both nodes; merged as PR #4 and #5 |
-| Real-data mode (inlet, outlet) | Stages A–E passed on the branch build (stage D completed Nov 6). Pending review of the `feature/real-data-mode` PR |
+| Real-data mode (inlet, outlet) | Stages A–E passed (stage D completed Nov 6); merged as PR #6 on Nov 6 |
+| Perfboard and queue depth (inlet, outlet) | P5 passed on both; P6 passed on the outlet, inlet passed on a good cable (C1); queue depth on `/bench` (PR #8) accepted |
 | Open findings for the firmware maintainer | 4xx retried forever (head-of-line blocking); health stays "healthy" while uploads fail; no guard against a build role that differs from the provisioned role; watchdog warnings and slow drain from one TLS handshake per reading; full rescan of retained untimed records after every upload |
-| Next | Review and merge of the real-data PR; inlet/outlet side-by-side offset and the outlet CO₂ dip position-swap test; TLS connection reuse for the watchdog and drain findings; calibration against references |
+| Room test (Nov 16) | Both nodes 100 % complete in both blocks, no duplicates; CO₂ inlet − outlet ≈ +50 ppm in both rooms |
+| Next | Confirm the CO₂ offset against a reference (outlet likely ~40–50 ppm low); PM1.0/PM10 upload (needs a new queue record version); TLS connection reuse, CPU 240 MHz and the rescan cursor fix for the watchdog and drain findings; calibration against references |
