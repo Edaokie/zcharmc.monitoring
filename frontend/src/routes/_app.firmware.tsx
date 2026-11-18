@@ -26,13 +26,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
+import { APP_TZ_LABEL, formatPhtDateTime } from "@/lib/time";
 
 export const Route = createFileRoute("/_app/firmware")({ component: FirmwarePage });
 const button =
   "border border-border rounded-sm px-3 py-2 text-sm hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed";
 const primary = `${button} bg-foreground text-background hover:bg-foreground/90`;
 const when = (timestamp: string | null) =>
-  timestamp ? new Date(timestamp).toLocaleString() : "Never reported";
+  timestamp ? `${formatPhtDateTime(timestamp)} ${APP_TZ_LABEL}` : "Never reported";
 type Action =
   | { kind: "assign" | "withdraw" | "retry"; device: FleetDevice; release: FirmwareRelease | null }
   | { kind: "enable"; release: FirmwareRelease };

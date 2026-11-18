@@ -4,11 +4,13 @@ import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/http";
 import { type BenchDevice, type BenchReading, benchValues } from "@/lib/bench";
 import type { FleetPage } from "@/lib/firmware";
+import { APP_TZ_LABEL, formatPhtDateTime } from "@/lib/time";
 
 export const Route = createFileRoute("/_app/bench")({ component: BenchPage });
 const button =
   "rounded-sm border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-40";
-const when = (value: string | null) => (value ? new Date(value).toLocaleString() : "Not reported");
+const when = (value: string | null) =>
+  value ? `${formatPhtDateTime(value)} ${APP_TZ_LABEL}` : "Not reported";
 function BenchPage() {
   const { user } = useAuth();
   const allowed = Boolean(user?.can_manage_firmware);

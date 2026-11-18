@@ -105,17 +105,6 @@ export async function fetchHealth(): Promise<{ status: string; message: string }
   return apiFetch("/api/health");
 }
 
-/** Get latest reading for each node */
-export async function fetchLatest(): Promise<Reading[]> {
-  return apiFetch("/api/latest");
-}
-
-/** Get last 100 readings (most recent first) */
-export async function fetchHistory(nodeId?: string): Promise<Reading[]> {
-  const path = nodeId ? `/api/history/${nodeId}` : "/api/history";
-  return apiFetch(path);
-}
-
 /** Chart averages over the complete range (seconds, minutes, or hours). */
 export type SeriesReading = Pick<Reading, MeasurementField | "node_id" | "timestamp"> & {
   count: number;
@@ -123,9 +112,13 @@ export type SeriesReading = Pick<Reading, MeasurementField | "node_id" | "timest
 
 export async function fetchSeries(
   range: DateRange,
-  signal?: AbortSignal,
+  signalOrOptions?: AbortSignal | { signal?: AbortSignal; nodeId?: string },
 ): Promise<SeriesReading[]> {
-  return apiRequest(`/api/series?range=${range}`, { signal });
+  const options =
+    signalOrOptions instanceof AbortSignal ? { signal: signalOrOptions } : (signalOrOptions ?? {});
+  const params = new URLSearchParams({ range });
+  if (options.nodeId) params.set("node_id", options.nodeId);
+  return apiRequest(`/api/series?${params}`, { signal: options.signal });
 }
 
 /** Get filtered, paginated readings */
