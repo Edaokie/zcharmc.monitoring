@@ -41,16 +41,30 @@ const DATE_RANGES: { label: string; value: DateRange | "custom" }[] = [
 
 const NODES = ["All", "inlet", "outlet"];
 
+// Sensor filter options — one entry per chart shown on the Charts tab.
 const SENSOR_LABELS: Record<string, string> = {
   All: "All Sensors",
   co2: "CO₂",
   temperature: "Temperature",
   humidity: "Humidity",
-  pressure: "Pressure (PS-01 & PS-02)",
-  flow_rate: "Flow Rate",
   ph: "pH",
-  pm25: "PM2.5",
 };
+
+type ChartField = "co2" | "temperature" | "humidity" | "ph";
+
+/** Sorted inlet/outlet time series for one reading field. */
+function chartPair(readings: Reading[], field: ChartField) {
+  const forNode = (nodeId: string) =>
+    readings
+      .filter((r) => r.node_id === nodeId)
+      .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r[field] ?? null }))
+      .sort((a, b) => a.t - b.t);
+  return { inlet: forNode("inlet"), outlet: forNode("outlet") };
+}
+
+function hasPoints(pair: ReturnType<typeof chartPair>) {
+  return [...pair.inlet, ...pair.outlet].some((p) => p.v !== null);
+}
 
 function ReportsPage() {
   const [range, setRange] = useState<DateRange | "custom">("24h");
@@ -138,39 +152,14 @@ function ReportsPage() {
 
   // Chart data from readings — filter by selected sensor tab
   const showCo2 = sensor === "All" || sensor === "co2";
-  const showPressure = sensor === "All" || sensor === "pressure";
+  const showTemp = sensor === "All" || sensor === "temperature";
+  const showHumidity = sensor === "All" || sensor === "humidity";
+  const showPh = sensor === "All" || sensor === "ph";
 
-  const co2ChartInlet = readings
-    .filter((r) => r.node_id === "inlet")
-    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.co2 ?? null }))
-    .sort((a, b) => a.t - b.t);
-
-  const co2ChartOutlet = readings
-    .filter((r) => r.node_id === "outlet")
-    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.co2 ?? null }))
-    .sort((a, b) => a.t - b.t);
-
-  const ps01Chart = readings
-    .filter((r) => r.node_id === "inlet")
-    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.pressure1 ?? null }))
-    .sort((a, b) => a.t - b.t);
-
-  const ps02Chart = readings
-    .filter((r) => r.node_id === "outlet")
-    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.pressure2 ?? null }))
-    .sort((a, b) => a.t - b.t);
-
-  const tempChart = readings
-    .filter((r) => r.node_id === "inlet")
-    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.temperature ?? null }))
-    .sort((a, b) => a.t - b.t);
-
-  const humidityChart = readings
-    .filter((r) => r.node_id === "inlet")
-    .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r.humidity ?? null }))
-    .sort((a, b) => a.t - b.t);
-
-  const hasChartData = co2ChartInlet.length > 0 || co2ChartOutlet.length > 0;
+  const co2Chart = chartPair(readings, "co2");
+  const tempChart = chartPair(readings, "temperature");
+  const humidityChart = chartPair(readings, "humidity");
+  const phChart = chartPair(readings, "ph");
 
   return (
     <div className="p-8 space-y-6">
@@ -323,14 +312,14 @@ function ReportsPage() {
         <div className="space-y-6">
           {/* CO₂ history chart */}
           {showCo2 && (
-            <ChartCard title="CO₂ history — Inlet vs Outlet" subtitle="ppm">
-              {hasChartData ? (
+            <ChartCard title="CO₂ history — Inlet vs Outlet" subtitle="Inlet solid · Outlet dashed">
+              {hasPoints(co2Chart) ? (
                 <TimeSeriesChart
                   height={280}
                   yLabel="ppm"
                   series={[
-                    { name: "Inlet CO₂", data: co2ChartInlet },
-                    { name: "Outlet CO₂", data: co2ChartOutlet, dashed: true },
+                    { name: "Inlet CO₂", data: co2Chart.inlet },
+                    { name: "Outlet CO₂", data: co2Chart.outlet, dashed: true },
                   ]}
                 />
               ) : (
@@ -339,38 +328,64 @@ function ReportsPage() {
             </ChartCard>
           )}
 
-          {/* Pressure history chart */}
-          {showPressure && (
-            <ChartCard
-              title="Pressure history — PS-01 & PS-02"
-              subtitle="PS-01 Left Tank (solid) · PS-02 Right Tank (dashed) · Max 150 psi"
-            >
-              {ps01Chart.length > 0 || ps02Chart.length > 0 ? (
-                <TimeSeriesChart
-                  height={280}
-                  yLabel="psi"
-                  series={[
-                    { name: "PS-01 Left Tank", data: ps01Chart },
-                    { name: "PS-02 Right Tank", data: ps02Chart, dashed: true },
-                  ]}
-                  thresholds={[{ value: 150, label: "Max 150 psi" }]}
-                />
-              ) : (
-                <EmptyChart loading={loading} />
+          {(showTemp || showHumidity) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Temperature */}
+              {showTemp && (
+                <ChartCard
+                  title="Temperature — Inlet vs Outlet"
+                  subtitle="Inlet solid · Outlet dashed"
+                >
+                  {hasPoints(tempChart) ? (
+                    <TimeSeriesChart
+                      height={240}
+                      yLabel="°C"
+                      series={[
+                        { name: "Inlet Temp", data: tempChart.inlet },
+                        { name: "Outlet Temp", data: tempChart.outlet, dashed: true },
+                      ]}
+                    />
+                  ) : (
+                    <EmptyChart loading={loading} />
+                  )}
+                </ChartCard>
               )}
-            </ChartCard>
+
+              {/* Humidity */}
+              {showHumidity && (
+                <ChartCard
+                  title="Humidity — Inlet vs Outlet"
+                  subtitle="Inlet solid · Outlet dashed"
+                >
+                  {hasPoints(humidityChart) ? (
+                    <TimeSeriesChart
+                      height={240}
+                      yLabel="%"
+                      series={[
+                        { name: "Inlet Humidity", data: humidityChart.inlet },
+                        { name: "Outlet Humidity", data: humidityChart.outlet, dashed: true },
+                      ]}
+                    />
+                  ) : (
+                    <EmptyChart loading={loading} />
+                  )}
+                </ChartCard>
+              )}
+            </div>
           )}
 
-          {/* Temp & Humidity */}
-          {(sensor === "All" || sensor === "temperature" || sensor === "humidity") && (
-            <ChartCard title="Temperature & Humidity — Inlet" subtitle="°C solid · % dashed">
-              {tempChart.length > 0 ? (
+          {/* pH Level */}
+          {showPh && (
+            <ChartCard title="pH Level — Inlet vs Outlet" subtitle="Neutral threshold = 7.0">
+              {hasPoints(phChart) ? (
                 <TimeSeriesChart
                   height={240}
+                  yLabel="pH"
                   series={[
-                    { name: "Inlet Temp (°C)", data: tempChart },
-                    { name: "Inlet Humidity (%)", data: humidityChart, dashed: true },
+                    { name: "Inlet pH", data: phChart.inlet },
+                    { name: "Outlet pH", data: phChart.outlet, dashed: true },
                   ]}
+                  thresholds={[{ value: 7, label: "Neutral" }]}
                 />
               ) : (
                 <EmptyChart loading={loading} />

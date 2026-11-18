@@ -315,18 +315,35 @@ function DashboardPage() {
           )}
         </Panel>
 
-        {/* Temperature & Humidity */}
-        <Panel title="Temperature & humidity" subtitle="Temp solid · Humidity dashed">
-          {hasMeasurements(tempSeries.inlet, humiditySeries.inlet) ? (
+        {/* Temperature */}
+        <Panel title="Temperature" subtitle="Inlet solid · Outlet dashed">
+          {hasMeasurements(tempSeries.inlet, tempSeries.outlet) ? (
             <TimeSeriesChart
               timeWindow={historyWindow}
+              yLabel="°C"
               series={[
-                { name: "Inlet Temp (°C)", data: tempSeries.inlet },
-                { name: "Inlet Humidity (%)", data: humiditySeries.inlet, dashed: true },
+                { name: "Inlet Temp", data: tempSeries.inlet },
+                { name: "Outlet Temp", data: tempSeries.outlet, dashed: true },
               ]}
             />
           ) : (
-            <NoDataPlaceholder message="Waiting for temperature & humidity data..." />
+            <NoDataPlaceholder message="Waiting for temperature data..." />
+          )}
+        </Panel>
+
+        {/* Humidity */}
+        <Panel title="Humidity" subtitle="Inlet solid · Outlet dashed">
+          {hasMeasurements(humiditySeries.inlet, humiditySeries.outlet) ? (
+            <TimeSeriesChart
+              timeWindow={historyWindow}
+              yLabel="%"
+              series={[
+                { name: "Inlet Humidity", data: humiditySeries.inlet },
+                { name: "Outlet Humidity", data: humiditySeries.outlet, dashed: true },
+              ]}
+            />
+          ) : (
+            <NoDataPlaceholder message="Waiting for humidity data..." />
           )}
         </Panel>
 
