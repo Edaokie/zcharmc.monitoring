@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download, Loader2, BarChart3, FileText } from "lucide-react";
 import {
   Table,
@@ -11,13 +11,16 @@ import {
 } from "@/components/ui/table";
 import { TimeSeriesChart } from "@/components/monitor/TimeSeriesChart";
 import { StatCard } from "@/components/monitor/StatCard";
+import { sensorPoints } from "@/lib/monitoring";
 import { APP_TZ_LABEL, formatPhtDateTime, phtInputToIso } from "@/lib/time";
 import { toast } from "sonner";
 import {
   fetchReadings,
+  fetchSeries,
   fetchStats,
   exportCSV,
   type Reading,
+  type SeriesReading,
   type Stats,
   type DateRange,
   type ReadingsFilter,
@@ -51,15 +54,40 @@ const SENSOR_LABELS: Record<string, string> = {
 };
 
 type ChartField = "co2" | "temperature" | "humidity" | "ph";
+type ChartRow = Pick<Reading, ChartField | "node_id" | "timestamp">;
+
+interface AppliedQuery {
+  range: DateRange | "custom";
+  node: string;
+  customStart: string;
+  customEnd: string;
+  revision: number;
+}
+
+function buildQueryFilter(q: Omit<AppliedQuery, "revision">): ReadingsFilter {
+  const filter: ReadingsFilter = {};
+  if (q.node !== "All") filter.node_id = q.node;
+  if (q.range !== "custom") {
+    filter.range = q.range;
+  } else if (q.customStart && q.customEnd) {
+    filter.start = phtInputToIso(q.customStart);
+    filter.end = phtInputToIso(q.customEnd);
+  }
+  return filter;
+}
 
 /** Sorted inlet/outlet time series for one reading field. */
-function chartPair(readings: Reading[], field: ChartField) {
-  const forNode = (nodeId: string) =>
-    readings
-      .filter((r) => r.node_id === nodeId)
-      .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r[field] ?? null }))
-      .sort((a, b) => a.t - b.t);
-  return { inlet: forNode("inlet"), outlet: forNode("outlet") };
+function chartPair(rows: readonly ChartRow[], field: ChartField) {
+  return {
+    inlet: sensorPoints(
+      rows.filter((r) => r.node_id === "inlet"),
+      field,
+    ),
+    outlet: sensorPoints(
+      rows.filter((r) => r.node_id === "outlet"),
+      field,
+    ),
+  };
 }
 
 function hasPoints(pair: ReturnType<typeof chartPair>) {
@@ -72,6 +100,13 @@ function ReportsPage() {
   const [sensor, setSensor] = useState("All");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
+  const [applied, setApplied] = useState<AppliedQuery>({
+    range: "24h",
+    node: "All",
+    customStart: "",
+    customEnd: "",
+    revision: 0,
+  });
   const [page, setPage] = useState(1);
   const [activeTab, setActiveTab] = useState<"charts" | "records">("charts");
   const [exportStart, setExportStart] = useState("");
@@ -79,72 +114,100 @@ function ReportsPage() {
   const [exportNode, setExportNode] = useState("All");
 
   const [readings, setReadings] = useState<Reading[]>([]);
+  const [chartRows, setChartRows] = useState<(Reading | SeriesReading)[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  // Build filter object from current state
-  function buildFilter(): ReadingsFilter {
-    const filter: ReadingsFilter = { page, per_page: 50 };
-    if (node !== "All") filter.node_id = node;
-    if (range !== "custom") {
-      filter.range = range as DateRange;
-    } else if (customStart && customEnd) {
-      filter.start = phtInputToIso(customStart);
-      filter.end = phtInputToIso(customEnd);
-    }
-    return filter;
-  }
-
-  // Fetch data
-  async function loadData() {
-    setLoading(true);
-    try {
-      const filter = buildFilter();
-      const [readingsRes, statsRes] = await Promise.all([
-        fetchReadings(filter),
-        fetchStats(filter),
-      ]);
-      setReadings(readingsRes.data);
-      setTotalPages(readingsRes.pagination.total_pages);
-      setTotalRecords(readingsRes.pagination.total);
-      setStats(statsRes);
-    } catch (err) {
-      console.error("[Reports] Failed to load:", err);
-      toast.error("Failed to load reports data. Is the backend running?");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Load on mount and when page changes
+  // Fetch summary stats and full-range chart series whenever applied filters change.
   useEffect(() => {
-    loadData();
-  }, [page]);
+    const controller = new AbortController();
+    const filter = buildQueryFilter(applied);
+    setLoading(true);
+    const seriesPromise =
+      applied.range !== "custom"
+        ? fetchSeries(applied.range, {
+            nodeId: applied.node !== "All" ? applied.node : undefined,
+            signal: controller.signal,
+          })
+        : fetchReadings({ ...filter, page: 1, per_page: 500 }).then((res) => res.data);
+
+    Promise.all([fetchStats(filter), seriesPromise])
+      .then(([statsRes, seriesRes]) => {
+        if (controller.signal.aborted) return;
+        setStats(statsRes);
+        setChartRows(seriesRes);
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        console.error("[Reports] Failed to load summary/charts:", err);
+        toast.error("Failed to load reports data. Is the backend running?");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [applied]);
+
+  // Fetch paginated table records for the applied filter and current page.
+  useEffect(() => {
+    let active = true;
+    const filter = { ...buildQueryFilter(applied), page, per_page: 50 };
+    setLoading(true);
+    fetchReadings(filter)
+      .then((readingsRes) => {
+        if (!active) return;
+        setReadings(readingsRes.data);
+        setTotalPages(readingsRes.pagination.total_pages);
+        setTotalRecords(readingsRes.pagination.total);
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error("[Reports] Failed to load readings:", err);
+        toast.error("Failed to load reports data. Is the backend running?");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [applied, page]);
 
   // Handle Apply Filters
   function handleApply() {
+    if (range === "custom") {
+      if (!customStart || !customEnd) {
+        toast.error("Choose both a start and an end time for a custom range.");
+        return;
+      }
+      if (phtInputToIso(customStart) > phtInputToIso(customEnd)) {
+        toast.error("End time must be on or after the start time.");
+        return;
+      }
+    }
     setPage(1);
-    loadData();
+    setApplied((prev) => ({
+      range,
+      node,
+      customStart,
+      customEnd,
+      revision: prev.revision + 1,
+    }));
   }
 
-  // Handle exports
+  // Handle exports using the currently applied filters so exported rows match the view.
   function handleExportAll() {
-    const filter = buildFilter();
-    delete filter.page;
-    delete filter.per_page;
-    exportCSV(filter);
+    exportCSV(buildQueryFilter(applied));
     toast.success("Downloading CSV...");
   }
 
   function handleExportPerNode() {
-    const filter = buildFilter();
-    delete filter.page;
-    delete filter.per_page;
-    if (node !== "All") {
-      exportCSV({ ...filter, node_id: node });
-      toast.success(`Downloading CSV for ${node}...`);
+    const filter = buildQueryFilter(applied);
+    if (applied.node !== "All") {
+      exportCSV({ ...filter, node_id: applied.node });
+      toast.success(`Downloading CSV for ${applied.node}...`);
     } else {
       ["inlet", "outlet"].forEach((n) => {
         exportCSV({ ...filter, node_id: n });
@@ -175,10 +238,10 @@ function ReportsPage() {
   const showHumidity = sensor === "All" || sensor === "humidity";
   const showPh = sensor === "All" || sensor === "ph";
 
-  const co2Chart = chartPair(readings, "co2");
-  const tempChart = chartPair(readings, "temperature");
-  const humidityChart = chartPair(readings, "humidity");
-  const phChart = chartPair(readings, "ph");
+  const co2Chart = useMemo(() => chartPair(chartRows, "co2"), [chartRows]);
+  const tempChart = useMemo(() => chartPair(chartRows, "temperature"), [chartRows]);
+  const humidityChart = useMemo(() => chartPair(chartRows, "humidity"), [chartRows]);
+  const phChart = useMemo(() => chartPair(chartRows, "ph"), [chartRows]);
 
   return (
     <div className="p-8 space-y-6">
