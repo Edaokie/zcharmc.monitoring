@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { apiRequest, setCsrfToken } from "./http";
+import { apiRequest, onUnauthorized, setCsrfToken } from "./http";
 
 export type Role = "admin" | "client";
 export interface User {
@@ -49,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       /* Storage restrictions do not prevent session login. */
     }
     void refresh();
+    return onUnauthorized(() => setUser(null));
   }, [refresh]);
 
   const login: AuthContextValue["login"] = async (username, password) => {

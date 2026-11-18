@@ -54,12 +54,23 @@ function AlertsPage() {
   );
   const filtered = filterAlerts(records, range, node, type, now);
   const selected = filtered.find((record) => record.id === selectedId);
-  const context = selected
-    ? sensorPoints(
-        recentReadings.filter((row) => row.node_id === selected.node),
-        selected.sensor,
-      )
-    : [];
+  const selectedNode = selected?.node;
+  const selectedSensor = selected?.sensor;
+  const selectedLabel = selected?.label;
+  const context = useMemo(
+    () =>
+      selectedNode && selectedSensor
+        ? sensorPoints(
+            recentReadings.filter((row) => row.node_id === selectedNode),
+            selectedSensor,
+          )
+        : [],
+    [recentReadings, selectedNode, selectedSensor],
+  );
+  const contextSeries = useMemo(
+    () => (selectedLabel ? [{ name: selectedLabel, data: context }] : []),
+    [selectedLabel, context],
+  );
 
   function exportShown() {
     const url = URL.createObjectURL(
@@ -73,8 +84,8 @@ function AlertsPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <header className="flex items-start justify-between gap-4">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Alerts</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -208,11 +219,7 @@ function AlertsPage() {
               </div>
               <p className="text-xs text-muted-foreground">Recent live context for this sensor</p>
               {context.some((point) => point.v != null) ? (
-                <TimeSeriesChart
-                  height={160}
-                  yLabel={selected.unit}
-                  series={[{ name: selected.label, data: context }]}
-                />
+                <TimeSeriesChart height={160} yLabel={selected.unit} series={contextSeries} />
               ) : (
                 <p className="text-xs text-muted-foreground">
                   No recent live data for this sensor.
