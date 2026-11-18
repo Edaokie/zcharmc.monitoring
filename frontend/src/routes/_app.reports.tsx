@@ -66,6 +66,14 @@ function hasPoints(pair: ReturnType<typeof chartPair>) {
   return [...pair.inlet, ...pair.outlet].some((p) => p.v !== null);
 }
 
+/**
+ * `<input type="datetime-local">` values have no timezone. The backend runs in
+ * UTC, so convert the user's local time to an explicit UTC ISO string.
+ */
+function localInputToIso(value: string) {
+  return new Date(value).toISOString();
+}
+
 function ReportsPage() {
   const [range, setRange] = useState<DateRange | "custom">("24h");
   const [node, setNode] = useState("All");
@@ -74,6 +82,9 @@ function ReportsPage() {
   const [customEnd, setCustomEnd] = useState("");
   const [page, setPage] = useState(1);
   const [activeTab, setActiveTab] = useState<"charts" | "records">("charts");
+  const [exportStart, setExportStart] = useState("");
+  const [exportEnd, setExportEnd] = useState("");
+  const [exportNode, setExportNode] = useState("All");
 
   const [readings, setReadings] = useState<Reading[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -88,8 +99,8 @@ function ReportsPage() {
     if (range !== "custom") {
       filter.range = range as DateRange;
     } else if (customStart && customEnd) {
-      filter.start = customStart;
-      filter.end = customEnd;
+      filter.start = localInputToIso(customStart);
+      filter.end = localInputToIso(customEnd);
     }
     return filter;
   }
@@ -148,6 +159,22 @@ function ReportsPage() {
       });
       toast.success("Downloading 2 CSV files (inlet & outlet)...");
     }
+  }
+
+  // Custom time-range export (independent of the filter bar)
+  function handleCustomExport() {
+    if (!exportStart || !exportEnd) {
+      toast.error("Choose both a start and an end time to export.");
+      return;
+    }
+    const start = localInputToIso(exportStart);
+    const end = localInputToIso(exportEnd);
+    if (start > end) {
+      toast.error("End time must be on or after the start time.");
+      return;
+    }
+    exportCSV({ start, end, ...(exportNode !== "All" && { node_id: exportNode }) });
+    toast.success("Downloading CSV for the selected time range...");
   }
 
   // Chart data from readings — filter by selected sensor tab
@@ -421,6 +448,49 @@ function ReportsPage() {
                 Export all
               </button>
             </div>
+          </div>
+
+          {/* Custom time-range export */}
+          <div className="flex flex-wrap items-end gap-3 px-5 py-3 border-b border-border bg-muted/20">
+            <Field label="Export from">
+              <input
+                type="datetime-local"
+                value={exportStart}
+                max={exportEnd || undefined}
+                onChange={(e) => setExportStart(e.target.value)}
+                className="border border-border rounded-sm px-2 py-1.5 text-sm bg-background"
+              />
+            </Field>
+            <Field label="Export to">
+              <input
+                type="datetime-local"
+                value={exportEnd}
+                min={exportStart || undefined}
+                onChange={(e) => setExportEnd(e.target.value)}
+                className="border border-border rounded-sm px-2 py-1.5 text-sm bg-background"
+              />
+            </Field>
+            <Field label="Node">
+              <select
+                value={exportNode}
+                onChange={(e) => setExportNode(e.target.value)}
+                className="border border-border rounded-sm px-2 py-1.5 text-sm bg-background"
+              >
+                {NODES.map((n) => (
+                  <option key={n} value={n}>
+                    {n === "All" ? "All Nodes" : n.charAt(0).toUpperCase() + n.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <button
+              onClick={handleCustomExport}
+              disabled={!exportStart || !exportEnd}
+              className="bg-foreground text-background text-xs font-medium px-4 py-2 rounded-sm hover:bg-foreground/90 disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <Download className="h-3 w-3" />
+              Export custom range
+            </button>
           </div>
           <div className="overflow-x-auto">
             <Table>
