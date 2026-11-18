@@ -90,6 +90,8 @@ function chartPair(rows: readonly ChartRow[], field: ChartField) {
   };
 }
 
+const PH_THRESHOLDS = [{ value: 7, label: "Neutral" }];
+
 function hasPoints(pair: ReturnType<typeof chartPair>) {
   return [...pair.inlet, ...pair.outlet].some((p) => p.v !== null);
 }
@@ -245,8 +247,30 @@ function ReportsPage() {
   const humidityChart = useMemo(() => chartPair(chartRows, "humidity"), [chartRows]);
   const phChart = useMemo(() => chartPair(chartRows, "ph"), [chartRows]);
 
+  const chartSeries = useMemo(
+    () => ({
+      co2: [
+        { name: "Inlet CO₂", data: co2Chart.inlet },
+        { name: "Outlet CO₂", data: co2Chart.outlet, dashed: true },
+      ],
+      temperature: [
+        { name: "Inlet Temp", data: tempChart.inlet },
+        { name: "Outlet Temp", data: tempChart.outlet, dashed: true },
+      ],
+      humidity: [
+        { name: "Inlet Humidity", data: humidityChart.inlet },
+        { name: "Outlet Humidity", data: humidityChart.outlet, dashed: true },
+      ],
+      ph: [
+        { name: "Inlet pH", data: phChart.inlet },
+        { name: "Outlet pH", data: phChart.outlet, dashed: true },
+      ],
+    }),
+    [co2Chart, tempChart, humidityChart, phChart],
+  );
+
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -404,14 +428,7 @@ function ReportsPage() {
           {showCo2 && (
             <ChartCard title="CO₂ history — Inlet vs Outlet" subtitle="Inlet solid · Outlet dashed">
               {hasPoints(co2Chart) ? (
-                <TimeSeriesChart
-                  height={280}
-                  yLabel="ppm"
-                  series={[
-                    { name: "Inlet CO₂", data: co2Chart.inlet },
-                    { name: "Outlet CO₂", data: co2Chart.outlet, dashed: true },
-                  ]}
-                />
+                <TimeSeriesChart height={280} yLabel="ppm" series={chartSeries.co2} />
               ) : (
                 <EmptyChart loading={loading} />
               )}
@@ -427,14 +444,7 @@ function ReportsPage() {
                   subtitle="Inlet solid · Outlet dashed"
                 >
                   {hasPoints(tempChart) ? (
-                    <TimeSeriesChart
-                      height={240}
-                      yLabel="°C"
-                      series={[
-                        { name: "Inlet Temp", data: tempChart.inlet },
-                        { name: "Outlet Temp", data: tempChart.outlet, dashed: true },
-                      ]}
-                    />
+                    <TimeSeriesChart height={240} yLabel="°C" series={chartSeries.temperature} />
                   ) : (
                     <EmptyChart loading={loading} />
                   )}
@@ -448,14 +458,7 @@ function ReportsPage() {
                   subtitle="Inlet solid · Outlet dashed"
                 >
                   {hasPoints(humidityChart) ? (
-                    <TimeSeriesChart
-                      height={240}
-                      yLabel="%"
-                      series={[
-                        { name: "Inlet Humidity", data: humidityChart.inlet },
-                        { name: "Outlet Humidity", data: humidityChart.outlet, dashed: true },
-                      ]}
-                    />
+                    <TimeSeriesChart height={240} yLabel="%" series={chartSeries.humidity} />
                   ) : (
                     <EmptyChart loading={loading} />
                   )}
@@ -471,11 +474,8 @@ function ReportsPage() {
                 <TimeSeriesChart
                   height={240}
                   yLabel="pH"
-                  series={[
-                    { name: "Inlet pH", data: phChart.inlet },
-                    { name: "Outlet pH", data: phChart.outlet, dashed: true },
-                  ]}
-                  thresholds={[{ value: 7, label: "Neutral" }]}
+                  series={chartSeries.ph}
+                  thresholds={PH_THRESHOLDS}
                 />
               ) : (
                 <EmptyChart loading={loading} />
@@ -660,10 +660,10 @@ function ReportsPage() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</label>
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</span>
       {children}
-    </div>
+    </label>
   );
 }
 

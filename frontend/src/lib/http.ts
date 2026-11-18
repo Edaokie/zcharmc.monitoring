@@ -2,6 +2,12 @@
 export const API_PROXY = "/backend";
 let csrfToken: string | null = null;
 let csrfRequest: Promise<void> | null = null;
+const unauthorizedListeners = new Set<() => void>();
+
+export function onUnauthorized(listener: () => void): () => void {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
+}
 
 export class ApiError extends Error {
   status: number;
@@ -48,6 +54,10 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   });
   const data = await response.json().catch(() => null);
   if (!response.ok) {
+    if (response.status === 401 && path !== "/api/auth/login" && path !== "/api/auth/session") {
+      csrfToken = null;
+      unauthorizedListeners.forEach((listener) => listener());
+    }
     const message =
       data?.error ?? data?.detail ?? (data ? Object.values(data).flat().join(" ") : null);
     throw new ApiError(response.status, String(message || `Request failed (${response.status}).`));
