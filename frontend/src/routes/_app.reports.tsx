@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table";
 import { TimeSeriesChart } from "@/components/monitor/TimeSeriesChart";
 import { StatCard } from "@/components/monitor/StatCard";
-import { format } from "date-fns";
+import { APP_TZ_LABEL, formatPhtDateTime, phtInputToIso } from "@/lib/time";
 import { toast } from "sonner";
 import {
   fetchReadings,
@@ -66,14 +66,6 @@ function hasPoints(pair: ReturnType<typeof chartPair>) {
   return [...pair.inlet, ...pair.outlet].some((p) => p.v !== null);
 }
 
-/**
- * `<input type="datetime-local">` values have no timezone. The backend runs in
- * UTC, so convert the user's local time to an explicit UTC ISO string.
- */
-function localInputToIso(value: string) {
-  return new Date(value).toISOString();
-}
-
 function ReportsPage() {
   const [range, setRange] = useState<DateRange | "custom">("24h");
   const [node, setNode] = useState("All");
@@ -99,8 +91,8 @@ function ReportsPage() {
     if (range !== "custom") {
       filter.range = range as DateRange;
     } else if (customStart && customEnd) {
-      filter.start = localInputToIso(customStart);
-      filter.end = localInputToIso(customEnd);
+      filter.start = phtInputToIso(customStart);
+      filter.end = phtInputToIso(customEnd);
     }
     return filter;
   }
@@ -167,8 +159,8 @@ function ReportsPage() {
       toast.error("Choose both a start and an end time to export.");
       return;
     }
-    const start = localInputToIso(exportStart);
-    const end = localInputToIso(exportEnd);
+    const start = phtInputToIso(exportStart);
+    const end = phtInputToIso(exportEnd);
     if (start > end) {
       toast.error("End time must be on or after the start time.");
       return;
@@ -216,7 +208,7 @@ function ReportsPage() {
         {/* Custom date range inputs */}
         {range === "custom" && (
           <>
-            <Field label="Start">
+            <Field label={`Start (${APP_TZ_LABEL})`}>
               <input
                 type="datetime-local"
                 value={customStart}
@@ -224,7 +216,7 @@ function ReportsPage() {
                 className="border border-border rounded-sm px-2 py-1.5 text-sm bg-background"
               />
             </Field>
-            <Field label="End">
+            <Field label={`End (${APP_TZ_LABEL})`}>
               <input
                 type="datetime-local"
                 value={customEnd}
@@ -452,7 +444,7 @@ function ReportsPage() {
 
           {/* Custom time-range export */}
           <div className="flex flex-wrap items-end gap-3 px-5 py-3 border-b border-border bg-muted/20">
-            <Field label="Export from">
+            <Field label={`Export from (${APP_TZ_LABEL})`}>
               <input
                 type="datetime-local"
                 value={exportStart}
@@ -461,7 +453,7 @@ function ReportsPage() {
                 className="border border-border rounded-sm px-2 py-1.5 text-sm bg-background"
               />
             </Field>
-            <Field label="Export to">
+            <Field label={`Export to (${APP_TZ_LABEL})`}>
               <input
                 type="datetime-local"
                 value={exportEnd}
@@ -496,7 +488,7 @@ function ReportsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Timestamp</TableHead>
+                  <TableHead>Timestamp ({APP_TZ_LABEL})</TableHead>
                   <TableHead>Node</TableHead>
                   <TableHead className="text-right">CO₂ (ppm)</TableHead>
                   <TableHead className="text-right">Temp (°C)</TableHead>
@@ -519,7 +511,7 @@ function ReportsPage() {
                   readings.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell className="font-mono text-xs whitespace-nowrap">
-                        {format(new Date(r.timestamp), "yyyy-MM-dd HH:mm:ss")}
+                        {formatPhtDateTime(r.timestamp)}
                       </TableCell>
                       <TableCell>
                         <span

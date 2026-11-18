@@ -1,5 +1,6 @@
 import { createElement, useCallback, useEffect, useId, useState } from "react";
 import type { SensorPoint } from "@/lib/mock-data";
+import { APP_TZ_LABEL, formatPhtAxis, formatPhtDateTime, formatPhtTime } from "@/lib/time";
 
 // ApexCharts touches window on import; load client-side only.
 export interface Series {
@@ -90,6 +91,14 @@ export function TimeSeriesChart({
 
   const safeId = `chart-${chartId.replace(/:/g, "")}`;
 
+  // Time span drives axis label detail (time only vs date + time).
+  const times = series.flatMap((s) => s.data.map((p) => p.t));
+  const spanMs = timeWindow
+    ? timeWindow.max - timeWindow.min
+    : times.length
+      ? Math.max(...times) - Math.min(...times)
+      : 0;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const options: any = {
     chart: {
@@ -118,7 +127,16 @@ export function TimeSeriesChart({
       type: "datetime",
       min: timeWindow?.min,
       max: timeWindow?.max,
-      labels: { style: { colors: "#737373", fontSize: "11px" } },
+      labels: {
+        style: { colors: "#737373", fontSize: "11px" },
+        // ApexCharts renders datetime axes in UTC by default; show Philippine Time.
+        formatter: (_value: string, timestamp?: number) =>
+          timestamp == null ? "" : formatPhtAxis(timestamp, spanMs),
+      },
+      title: {
+        text: `Time (${APP_TZ_LABEL})`,
+        style: { color: "#737373", fontWeight: 400, fontSize: "11px" },
+      },
       axisBorder: { color: "#e5e5e5" },
       axisTicks: { color: "#e5e5e5" },
     },
@@ -145,7 +163,10 @@ export function TimeSeriesChart({
     },
     tooltip: {
       theme: "light",
-      x: { format: "HH:mm:ss" },
+      x: {
+        formatter: (timestamp: number) =>
+          `${spanMs > 86_400_000 ? formatPhtDateTime(timestamp) : formatPhtTime(timestamp)} ${APP_TZ_LABEL}`,
+      },
       marker: { show: true },
       y: {
         formatter: formatValue,
