@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { CircleDot, Download, Loader2 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
+import { APP_TZ_LABEL, formatPhtDateTime } from "@/lib/time";
 import { TimeSeriesChart } from "@/components/monitor/TimeSeriesChart";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -197,7 +198,10 @@ function AlertsPage() {
               <div className="text-xs space-y-1">
                 <Row label="Sensor" value={selected.label} />
                 <Row label="Node" value={selected.node} />
-                <Row label="When" value={format(selected.timestamp, "yyyy-MM-dd HH:mm:ss")} />
+                <Row
+                  label={`When (${APP_TZ_LABEL})`}
+                  value={formatPhtDateTime(selected.timestamp)}
+                />
                 <Row label="Value" value={`${selected.triggered} ${selected.unit}`} />
                 <Row label="Threshold" value={selected.threshold} />
                 <Row label="Status" value="Recorded · Resolution not tracked" />

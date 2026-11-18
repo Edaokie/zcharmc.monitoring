@@ -440,7 +440,7 @@ function ThresholdSettingsPanel() {
     <div className="mt-6">
       <Accordion type="single" collapsible>
         <AccordionItem value="thresholds">
-          <AccordionTrigger>Alarm thresholds</AccordionTrigger>
+          <AccordionTrigger>Alarm thresholds (read-only)</AccordionTrigger>
           <AccordionContent>
             <div className="space-y-3 text-sm">
               <Row label="CO₂ warning (ppm)" value={THRESHOLDS.co2Warn} />
@@ -449,6 +449,9 @@ function ThresholdSettingsPanel() {
               <Row label="pH max" value={THRESHOLDS.phMax} />
               <Row label="Pressure warn (psi)" value={THRESHOLDS.pressureWarn} />
               <Row label="Pressure max (psi)" value={THRESHOLDS.pressureMax} />
+              <p className="text-xs text-muted-foreground pt-1">
+                Thresholds are read-only in this release.
+              </p>
             </div>
           </AccordionContent>
         </AccordionItem>
@@ -490,11 +493,7 @@ function Row({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-center justify-between border-b border-border pb-2">
       <span className="text-muted-foreground">{label}</span>
-      <input
-        type="number"
-        defaultValue={value}
-        className="w-24 border border-border rounded-sm px-2 py-1 text-right font-mono text-sm"
-      />
+      <span className="font-mono text-sm tabular-nums">{value}</span>
     </div>
   );
 }

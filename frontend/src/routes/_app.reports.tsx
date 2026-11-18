@@ -118,13 +118,15 @@ function ReportsPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [chartsLoading, setChartsLoading] = useState(false);
+  const [recordsLoading, setRecordsLoading] = useState(false);
+  const loading = chartsLoading || recordsLoading;
 
   // Fetch summary stats and full-range chart series whenever applied filters change.
   useEffect(() => {
     const controller = new AbortController();
     const filter = buildQueryFilter(applied);
-    setLoading(true);
+    setChartsLoading(true);
     const seriesPromise =
       applied.range !== "custom"
         ? fetchSeries(applied.range, {
@@ -145,7 +147,7 @@ function ReportsPage() {
         toast.error("Failed to load reports data. Is the backend running?");
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) setChartsLoading(false);
       });
     return () => controller.abort();
   }, [applied]);
@@ -154,7 +156,7 @@ function ReportsPage() {
   useEffect(() => {
     let active = true;
     const filter = { ...buildQueryFilter(applied), page, per_page: 50 };
-    setLoading(true);
+    setRecordsLoading(true);
     fetchReadings(filter)
       .then((readingsRes) => {
         if (!active) return;
@@ -168,7 +170,7 @@ function ReportsPage() {
         toast.error("Failed to load reports data. Is the backend running?");
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) setRecordsLoading(false);
       });
     return () => {
       active = false;
@@ -392,6 +394,12 @@ function ReportsPage() {
       {/* ── Charts tab ── */}
       {activeTab === "charts" && (
         <div className="space-y-6">
+          {applied.range === "custom" && totalRecords > 500 && (
+            <p className="text-xs text-muted-foreground">
+              Custom-range charts plot the latest 500 readings in this window; CSV export includes
+              all {totalRecords} records.
+            </p>
+          )}
           {/* CO₂ history chart */}
           {showCo2 && (
             <ChartCard title="CO₂ history — Inlet vs Outlet" subtitle="Inlet solid · Outlet dashed">
