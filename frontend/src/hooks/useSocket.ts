@@ -106,17 +106,13 @@ export function useSocket() {
     });
     socket.on("connect", () => setConnected(true));
     socket.on("disconnect", () => setConnected(false));
-    let retry: ReturnType<typeof setTimeout> | undefined;
     socket.on("connect_error", () => {
       setConnected(false);
-      clearTimeout(retry);
-      retry = setTimeout(() => socket.connect(), 5000);
     });
     socket.on("co2_update", handleUpdate);
     socket.on("valve_update", handleValveUpdate);
     return () => {
       disposed = true;
-      clearTimeout(retry);
       socket.off("co2_update", handleUpdate);
       socket.off("valve_update", handleValveUpdate);
       socket.disconnect();

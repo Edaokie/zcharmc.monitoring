@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download, Loader2, BarChart3, FileText } from "lucide-react";
 import {
   Table,
@@ -11,13 +11,16 @@ import {
 } from "@/components/ui/table";
 import { TimeSeriesChart } from "@/components/monitor/TimeSeriesChart";
 import { StatCard } from "@/components/monitor/StatCard";
+import { sensorPoints } from "@/lib/monitoring";
 import { APP_TZ_LABEL, formatPhtDateTime, phtInputToIso } from "@/lib/time";
 import { toast } from "sonner";
 import {
   fetchReadings,
+  fetchSeries,
   fetchStats,
   exportCSV,
   type Reading,
+  type SeriesReading,
   type Stats,
   type DateRange,
   type ReadingsFilter,
@@ -51,16 +54,43 @@ const SENSOR_LABELS: Record<string, string> = {
 };
 
 type ChartField = "co2" | "temperature" | "humidity" | "ph";
+type ChartRow = Pick<Reading, ChartField | "node_id" | "timestamp">;
+
+interface AppliedQuery {
+  range: DateRange | "custom";
+  node: string;
+  customStart: string;
+  customEnd: string;
+  revision: number;
+}
+
+function buildQueryFilter(q: Omit<AppliedQuery, "revision">): ReadingsFilter {
+  const filter: ReadingsFilter = {};
+  if (q.node !== "All") filter.node_id = q.node;
+  if (q.range !== "custom") {
+    filter.range = q.range;
+  } else if (q.customStart && q.customEnd) {
+    filter.start = phtInputToIso(q.customStart);
+    filter.end = phtInputToIso(q.customEnd);
+  }
+  return filter;
+}
 
 /** Sorted inlet/outlet time series for one reading field. */
-function chartPair(readings: Reading[], field: ChartField) {
-  const forNode = (nodeId: string) =>
-    readings
-      .filter((r) => r.node_id === nodeId)
-      .map((r) => ({ t: new Date(r.timestamp).getTime(), v: r[field] ?? null }))
-      .sort((a, b) => a.t - b.t);
-  return { inlet: forNode("inlet"), outlet: forNode("outlet") };
+function chartPair(rows: readonly ChartRow[], field: ChartField) {
+  return {
+    inlet: sensorPoints(
+      rows.filter((r) => r.node_id === "inlet"),
+      field,
+    ),
+    outlet: sensorPoints(
+      rows.filter((r) => r.node_id === "outlet"),
+      field,
+    ),
+  };
 }
+
+const PH_THRESHOLDS = [{ value: 7, label: "Neutral" }];
 
 function hasPoints(pair: ReturnType<typeof chartPair>) {
   return [...pair.inlet, ...pair.outlet].some((p) => p.v !== null);
@@ -72,6 +102,13 @@ function ReportsPage() {
   const [sensor, setSensor] = useState("All");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
+  const [applied, setApplied] = useState<AppliedQuery>({
+    range: "24h",
+    node: "All",
+    customStart: "",
+    customEnd: "",
+    revision: 0,
+  });
   const [page, setPage] = useState(1);
   const [activeTab, setActiveTab] = useState<"charts" | "records">("charts");
   const [exportStart, setExportStart] = useState("");
@@ -79,72 +116,102 @@ function ReportsPage() {
   const [exportNode, setExportNode] = useState("All");
 
   const [readings, setReadings] = useState<Reading[]>([]);
+  const [chartRows, setChartRows] = useState<(Reading | SeriesReading)[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [chartsLoading, setChartsLoading] = useState(false);
+  const [recordsLoading, setRecordsLoading] = useState(false);
+  const loading = chartsLoading || recordsLoading;
 
-  // Build filter object from current state
-  function buildFilter(): ReadingsFilter {
-    const filter: ReadingsFilter = { page, per_page: 50 };
-    if (node !== "All") filter.node_id = node;
-    if (range !== "custom") {
-      filter.range = range as DateRange;
-    } else if (customStart && customEnd) {
-      filter.start = phtInputToIso(customStart);
-      filter.end = phtInputToIso(customEnd);
-    }
-    return filter;
-  }
-
-  // Fetch data
-  async function loadData() {
-    setLoading(true);
-    try {
-      const filter = buildFilter();
-      const [readingsRes, statsRes] = await Promise.all([
-        fetchReadings(filter),
-        fetchStats(filter),
-      ]);
-      setReadings(readingsRes.data);
-      setTotalPages(readingsRes.pagination.total_pages);
-      setTotalRecords(readingsRes.pagination.total);
-      setStats(statsRes);
-    } catch (err) {
-      console.error("[Reports] Failed to load:", err);
-      toast.error("Failed to load reports data. Is the backend running?");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Load on mount and when page changes
+  // Fetch summary stats and full-range chart series whenever applied filters change.
   useEffect(() => {
-    loadData();
-  }, [page]);
+    const controller = new AbortController();
+    const filter = buildQueryFilter(applied);
+    setChartsLoading(true);
+    const seriesPromise =
+      applied.range !== "custom"
+        ? fetchSeries(applied.range, {
+            nodeId: applied.node !== "All" ? applied.node : undefined,
+            signal: controller.signal,
+          })
+        : fetchReadings({ ...filter, page: 1, per_page: 500 }).then((res) => res.data);
+
+    Promise.all([fetchStats(filter), seriesPromise])
+      .then(([statsRes, seriesRes]) => {
+        if (controller.signal.aborted) return;
+        setStats(statsRes);
+        setChartRows(seriesRes);
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        console.error("[Reports] Failed to load summary/charts:", err);
+        toast.error("Failed to load reports data. Is the backend running?");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setChartsLoading(false);
+      });
+    return () => controller.abort();
+  }, [applied]);
+
+  // Fetch paginated table records for the applied filter and current page.
+  useEffect(() => {
+    let active = true;
+    const filter = { ...buildQueryFilter(applied), page, per_page: 50 };
+    setRecordsLoading(true);
+    fetchReadings(filter)
+      .then((readingsRes) => {
+        if (!active) return;
+        setReadings(readingsRes.data);
+        setTotalPages(readingsRes.pagination.total_pages);
+        setTotalRecords(readingsRes.pagination.total);
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error("[Reports] Failed to load readings:", err);
+        toast.error("Failed to load reports data. Is the backend running?");
+      })
+      .finally(() => {
+        if (active) setRecordsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [applied, page]);
 
   // Handle Apply Filters
   function handleApply() {
+    if (range === "custom") {
+      if (!customStart || !customEnd) {
+        toast.error("Choose both a start and an end time for a custom range.");
+        return;
+      }
+      if (phtInputToIso(customStart) > phtInputToIso(customEnd)) {
+        toast.error("End time must be on or after the start time.");
+        return;
+      }
+    }
     setPage(1);
-    loadData();
+    setApplied((prev) => ({
+      range,
+      node,
+      customStart,
+      customEnd,
+      revision: prev.revision + 1,
+    }));
   }
 
-  // Handle exports
+  // Handle exports using the currently applied filters so exported rows match the view.
   function handleExportAll() {
-    const filter = buildFilter();
-    delete filter.page;
-    delete filter.per_page;
-    exportCSV(filter);
+    exportCSV(buildQueryFilter(applied));
     toast.success("Downloading CSV...");
   }
 
   function handleExportPerNode() {
-    const filter = buildFilter();
-    delete filter.page;
-    delete filter.per_page;
-    if (node !== "All") {
-      exportCSV({ ...filter, node_id: node });
-      toast.success(`Downloading CSV for ${node}...`);
+    const filter = buildQueryFilter(applied);
+    if (applied.node !== "All") {
+      exportCSV({ ...filter, node_id: applied.node });
+      toast.success(`Downloading CSV for ${applied.node}...`);
     } else {
       ["inlet", "outlet"].forEach((n) => {
         exportCSV({ ...filter, node_id: n });
@@ -175,13 +242,35 @@ function ReportsPage() {
   const showHumidity = sensor === "All" || sensor === "humidity";
   const showPh = sensor === "All" || sensor === "ph";
 
-  const co2Chart = chartPair(readings, "co2");
-  const tempChart = chartPair(readings, "temperature");
-  const humidityChart = chartPair(readings, "humidity");
-  const phChart = chartPair(readings, "ph");
+  const co2Chart = useMemo(() => chartPair(chartRows, "co2"), [chartRows]);
+  const tempChart = useMemo(() => chartPair(chartRows, "temperature"), [chartRows]);
+  const humidityChart = useMemo(() => chartPair(chartRows, "humidity"), [chartRows]);
+  const phChart = useMemo(() => chartPair(chartRows, "ph"), [chartRows]);
+
+  const chartSeries = useMemo(
+    () => ({
+      co2: [
+        { name: "Inlet CO₂", data: co2Chart.inlet },
+        { name: "Outlet CO₂", data: co2Chart.outlet, dashed: true },
+      ],
+      temperature: [
+        { name: "Inlet Temp", data: tempChart.inlet },
+        { name: "Outlet Temp", data: tempChart.outlet, dashed: true },
+      ],
+      humidity: [
+        { name: "Inlet Humidity", data: humidityChart.inlet },
+        { name: "Outlet Humidity", data: humidityChart.outlet, dashed: true },
+      ],
+      ph: [
+        { name: "Inlet pH", data: phChart.inlet },
+        { name: "Outlet pH", data: phChart.outlet, dashed: true },
+      ],
+    }),
+    [co2Chart, tempChart, humidityChart, phChart],
+  );
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -329,18 +418,17 @@ function ReportsPage() {
       {/* ── Charts tab ── */}
       {activeTab === "charts" && (
         <div className="space-y-6">
+          {applied.range === "custom" && totalRecords > 500 && (
+            <p className="text-xs text-muted-foreground">
+              Custom-range charts plot the latest 500 readings in this window; CSV export includes
+              all {totalRecords} records.
+            </p>
+          )}
           {/* CO₂ history chart */}
           {showCo2 && (
             <ChartCard title="CO₂ history — Inlet vs Outlet" subtitle="Inlet solid · Outlet dashed">
               {hasPoints(co2Chart) ? (
-                <TimeSeriesChart
-                  height={280}
-                  yLabel="ppm"
-                  series={[
-                    { name: "Inlet CO₂", data: co2Chart.inlet },
-                    { name: "Outlet CO₂", data: co2Chart.outlet, dashed: true },
-                  ]}
-                />
+                <TimeSeriesChart height={280} yLabel="ppm" series={chartSeries.co2} />
               ) : (
                 <EmptyChart loading={loading} />
               )}
@@ -356,14 +444,7 @@ function ReportsPage() {
                   subtitle="Inlet solid · Outlet dashed"
                 >
                   {hasPoints(tempChart) ? (
-                    <TimeSeriesChart
-                      height={240}
-                      yLabel="°C"
-                      series={[
-                        { name: "Inlet Temp", data: tempChart.inlet },
-                        { name: "Outlet Temp", data: tempChart.outlet, dashed: true },
-                      ]}
-                    />
+                    <TimeSeriesChart height={240} yLabel="°C" series={chartSeries.temperature} />
                   ) : (
                     <EmptyChart loading={loading} />
                   )}
@@ -377,14 +458,7 @@ function ReportsPage() {
                   subtitle="Inlet solid · Outlet dashed"
                 >
                   {hasPoints(humidityChart) ? (
-                    <TimeSeriesChart
-                      height={240}
-                      yLabel="%"
-                      series={[
-                        { name: "Inlet Humidity", data: humidityChart.inlet },
-                        { name: "Outlet Humidity", data: humidityChart.outlet, dashed: true },
-                      ]}
-                    />
+                    <TimeSeriesChart height={240} yLabel="%" series={chartSeries.humidity} />
                   ) : (
                     <EmptyChart loading={loading} />
                   )}
@@ -400,11 +474,8 @@ function ReportsPage() {
                 <TimeSeriesChart
                   height={240}
                   yLabel="pH"
-                  series={[
-                    { name: "Inlet pH", data: phChart.inlet },
-                    { name: "Outlet pH", data: phChart.outlet, dashed: true },
-                  ]}
-                  thresholds={[{ value: 7, label: "Neutral" }]}
+                  series={chartSeries.ph}
+                  thresholds={PH_THRESHOLDS}
                 />
               ) : (
                 <EmptyChart loading={loading} />
@@ -589,10 +660,10 @@ function ReportsPage() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</label>
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</span>
       {children}
-    </div>
+    </label>
   );
 }
 
