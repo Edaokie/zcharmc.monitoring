@@ -129,13 +129,18 @@ function ReportsPage() {
     const controller = new AbortController();
     const filter = buildQueryFilter(applied);
     setChartsLoading(true);
-    const seriesPromise =
+    const seriesTarget =
       applied.range !== "custom"
-        ? fetchSeries(applied.range, {
-            nodeId: applied.node !== "All" ? applied.node : undefined,
-            signal: controller.signal,
-          })
-        : fetchReadings({ ...filter, page: 1, per_page: 500 }).then((res) => res.data);
+        ? applied.range
+        : applied.customStart && applied.customEnd
+          ? { start: phtInputToIso(applied.customStart), end: phtInputToIso(applied.customEnd) }
+          : null;
+    const seriesPromise = seriesTarget
+      ? fetchSeries(seriesTarget, {
+          nodeId: applied.node !== "All" ? applied.node : undefined,
+          signal: controller.signal,
+        })
+      : Promise.resolve([] as SeriesReading[]);
 
     Promise.all([fetchStats(filter), seriesPromise])
       .then(([statsRes, seriesRes]) => {
@@ -146,7 +151,7 @@ function ReportsPage() {
       .catch((err) => {
         if (controller.signal.aborted) return;
         console.error("[Reports] Failed to load summary/charts:", err);
-        toast.error("Failed to load reports data. Is the backend running?");
+        toast.error(err instanceof Error ? err.message : "Failed to load reports data.");
       })
       .finally(() => {
         if (!controller.signal.aborted) setChartsLoading(false);
@@ -418,12 +423,6 @@ function ReportsPage() {
       {/* ── Charts tab ── */}
       {activeTab === "charts" && (
         <div className="space-y-6">
-          {applied.range === "custom" && totalRecords > 500 && (
-            <p className="text-xs text-muted-foreground">
-              Custom-range charts plot the latest 500 readings in this window; CSV export includes
-              all {totalRecords} records.
-            </p>
-          )}
           {/* CO₂ history chart */}
           {showCo2 && (
             <ChartCard title="CO₂ history — Inlet vs Outlet" subtitle="Inlet solid · Outlet dashed">

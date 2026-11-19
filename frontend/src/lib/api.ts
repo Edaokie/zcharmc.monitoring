@@ -111,12 +111,15 @@ export type SeriesReading = Pick<Reading, MeasurementField | "node_id" | "timest
 };
 
 export async function fetchSeries(
-  range: DateRange,
+  range: DateRange | { start: string; end: string },
   signalOrOptions?: AbortSignal | { signal?: AbortSignal; nodeId?: string },
 ): Promise<SeriesReading[]> {
   const options =
     signalOrOptions instanceof AbortSignal ? { signal: signalOrOptions } : (signalOrOptions ?? {});
-  const params = new URLSearchParams({ range });
+  const params =
+    typeof range === "string"
+      ? new URLSearchParams({ range })
+      : new URLSearchParams({ start: range.start, end: range.end });
   if (options.nodeId) params.set("node_id", options.nodeId);
   return apiRequest(`/api/series?${params}`, { signal: options.signal });
 }

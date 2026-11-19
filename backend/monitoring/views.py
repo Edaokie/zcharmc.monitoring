@@ -1,6 +1,7 @@
 import csv
 import math
-from datetime import timedelta
+from datetime import timedelta, timezone as dt_timezone
+from zoneinfo import ZoneInfo
 
 from django.db import connection
 from django.db.models import Avg, Count, Max, Min, Q
@@ -23,6 +24,25 @@ RANGES = {
     "1h": timedelta(hours=1), "6h": timedelta(hours=6), "12h": timedelta(hours=12),
     "24h": timedelta(days=1), "7d": timedelta(days=7), "30d": timedelta(days=30),
 }
+PHT = ZoneInfo("Asia/Manila")
+MAX_CUSTOM_SERIES_SPAN = timedelta(days=90)
+
+
+def parse_date_bounds(request):
+    dates = {}
+    for name in ("start", "end"):
+        raw = request.query_params.get(name)
+        if raw:
+            try:
+                value = parse_datetime(raw)
+            except ValueError:
+                value = None
+            if value is None:
+                raise serializers.ValidationError({name: "Use an ISO 8601 datetime."})
+            dates[name] = (timezone.make_aware(value) if timezone.is_naive(value) else value).astimezone(dt_timezone.utc)
+    if len(dates) == 2 and dates["start"] > dates["end"]:
+        raise serializers.ValidationError({"end": "Must be on or after start."})
+    return dates
 
 
 def filtered_readings(request, now=None):
@@ -41,19 +61,7 @@ def filtered_readings(request, now=None):
             raise serializers.ValidationError({"range": "Unknown date range."})
         now = now or timezone.now()
         return query.filter(timestamp__gte=now - RANGES[period], timestamp__lte=now)
-    dates = {}
-    for name in ("start", "end"):
-        raw = request.query_params.get(name)
-        if raw:
-            try:
-                value = parse_datetime(raw)
-            except ValueError:
-                value = None
-            if value is None:
-                raise serializers.ValidationError({name: "Use an ISO 8601 datetime."})
-            dates[name] = timezone.make_aware(value) if timezone.is_naive(value) else value
-    if len(dates) == 2 and dates["start"] > dates["end"]:
-        raise serializers.ValidationError({"end": "Must be on or after start."})
+    dates = parse_date_bounds(request)
     if "start" in dates:
         query = query.filter(timestamp__gte=dates["start"])
     if "end" in dates:
@@ -118,13 +126,26 @@ def history(request, node_id=None):
 def series(request):
     """Bound chart responses while covering the complete selected time window."""
     period = request.query_params.get("range")
-    if period not in RANGES:
-        raise serializers.ValidationError({"range": "A supported date range is required."})
-    now = timezone.now()
-    cutoff = now - RANGES[period]
-    truncate = TruncSecond if period == "1m" else TruncHour if period in ("7d", "30d") else TruncMinute
+    has_custom = bool(request.query_params.get("start") or request.query_params.get("end"))
+    if period:
+        if period not in RANGES:
+            raise serializers.ValidationError({"range": "A supported date range is required."})
+        end = timezone.now()
+        cutoff = end - RANGES[period]
+        truncate = TruncSecond if period == "1m" else TruncHour if period in ("7d", "30d") else TruncMinute
+    elif has_custom:
+        dates = parse_date_bounds(request)
+        if "start" not in dates or "end" not in dates:
+            raise serializers.ValidationError({"start": "Both start and end are required for a custom range."})
+        cutoff, end = dates["start"], dates["end"]
+        span = end - cutoff
+        if span > MAX_CUSTOM_SERIES_SPAN:
+            raise serializers.ValidationError({"end": "Custom range cannot exceed 90 days."})
+        truncate = TruncSecond if span <= timedelta(minutes=2) else TruncMinute if span <= timedelta(days=2) else TruncHour
+    else:
+        raise serializers.ValidationError({"range": "A supported date range or start/end window is required."})
     interval = timedelta(seconds=1) if truncate == TruncSecond else timedelta(hours=1) if truncate == TruncHour else timedelta(minutes=1)
-    query = filtered_readings(request, now=now).order_by().annotate(bucket=truncate("timestamp"))
+    query = filtered_readings(request, now=end).order_by().annotate(bucket=truncate("timestamp"))
     rows = query.values("node_id", "bucket").annotate(
         count=Count("id"), **{field: Avg(field) for field in MEASUREMENT_FIELDS},
     )
@@ -139,7 +160,7 @@ def series(request):
     if truncate == TruncHour:
         bucket = bucket.replace(minute=0)
     results = []
-    while bucket <= now:
+    while bucket <= end:
         for node in nodes:
             row = buckets.get((node, bucket))
             # Explicit empty buckets break the line through telemetry outages.
@@ -231,12 +252,14 @@ class CSVBuffer:
 def export_csv(request):
     query = filtered_readings(request)
     columns = ["id", "node_id", *MEASUREMENT_FIELDS, "timestamp"]
+    header = [*columns, "timestamp_pht"]
     writer = csv.writer(CSVBuffer())
 
     def rows():
-        yield writer.writerow(columns)
+        yield writer.writerow(header)
         for row in query.values_list(*columns).iterator(chunk_size=1000):
-            yield writer.writerow([v.isoformat() if hasattr(v, "isoformat") else v for v in row])
+            ts_pht = row[-1].astimezone(PHT)
+            yield writer.writerow([*row[:-1], ts_pht.isoformat(), ts_pht.strftime("%Y-%m-%d %H:%M:%S")])
 
     response = StreamingHttpResponse(rows(), content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="readings.csv"'
