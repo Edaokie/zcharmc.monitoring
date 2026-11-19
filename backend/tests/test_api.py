@@ -213,10 +213,33 @@ class MonitoringTests(TestCase):
         self.assertEqual(minute["count"], 2)
         self.assertEqual(len(seconds), 61)
         self.assertEqual(len(day), 1441)
-        for query in ("", "?range=wrong", "?range=1h&node_id=missing"):
+        for query in ("", "?range=wrong", "?range=1h&node_id=missing",
+                      "?start=2026-01-01T00:00:00Z",
+                      "?start=2026-01-02T00:00:00Z&end=2026-01-01T00:00:00Z",
+                      "?start=2026-01-01T00:00:00Z&end=2026-06-01T00:00:00Z"):
             self.assertIn(self.client.get("/api/series" + query).status_code, (400, 404))
         with override_settings(ALLOW_PUBLIC_READ=False):
             self.assertEqual(self.client.get("/api/series?range=1h").status_code, 401)
+
+    def test_chart_series_supports_custom_start_end_window(self):
+        Reading.objects.create(node_id="inlet", co2=100, timestamp="2026-11-18T08:00:10Z")
+        Reading.objects.create(node_id="inlet", co2=300, timestamp="2026-11-18T08:00:40Z")
+        Reading.objects.create(node_id="inlet", co2=999, timestamp="2026-11-18T09:00:00Z")
+        rows = self.client.get(
+            "/api/series?node_id=inlet&start=2026-11-18T08:00:00Z&end=2026-11-18T08:05:00Z"
+        ).json()
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(rows[0]["co2"], 200)
+        self.assertEqual(rows[0]["count"], 2)
+        self.assertEqual(sum(row["count"] for row in rows), 2)
+
+    def test_csv_export_uses_pht_timestamps(self):
+        Reading.objects.create(node_id="inlet", co2=420, timestamp="2026-11-18T16:30:05Z")
+        response = self.client.get("/api/export/csv?node_id=inlet")
+        rows = list(csv.DictReader(io.StringIO(b"".join(response.streaming_content).decode())))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["timestamp"], "2026-11-19T00:30:05+08:00")
+        self.assertEqual(rows[0]["timestamp_pht"], "2026-11-19 00:30:05")
 
     def test_alerts_preserve_all_sensor_breaches_without_fake_resolution(self):
         Reading.objects.create(node_id="inlet", co2=6000, ph=0, level=0)
